@@ -1,0 +1,8 @@
+[package]
+name = "rusty-vm-2"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+derive_more = { version = "2.1.0", features = ["full"] }
+num_enum = "0.7.5"
