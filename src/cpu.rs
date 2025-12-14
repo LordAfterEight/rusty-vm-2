@@ -98,6 +98,9 @@ impl<'a> CPU<'a> {
             }
             CpuMode::Debug => {
                 println!("{} {}", severity, error);
+                println!("Program Counter: 0x{:032X}", self.program_counter);
+                println!("Stack Pointer: 0x{:032X}", self.stack_pointer);
+                println!("Registers:\n{:?}", self.registers);
                 loop {
                     let mut input = [0u8; 1];
                     std::io::stdin().read_exact(&mut input).unwrap();

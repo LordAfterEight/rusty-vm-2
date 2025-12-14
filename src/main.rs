@@ -71,7 +71,7 @@ fn main() {
     rvmasm!(OpCode::JUMP, 0x1FF_FFFF);
     rvmasm!(OpCode::DIV, 1, 2, 3);
 
-    let mut cpu = cpu::CPU::new(cpu::CpuMode::Stable, &mem);
+    let mut cpu = cpu::CPU::new(cpu::CpuMode::Debug, &mem);
     println!("\nStarted VM in {} mode", cpu.mode);
     loop {
         cpu.update();
