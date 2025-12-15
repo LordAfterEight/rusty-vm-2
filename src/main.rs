@@ -1,7 +1,9 @@
-use crate::opcodes::OpCode;
+#![allow(unused_assignments)]
 
 #[macro_use]
 extern crate derive_more;
+
+use crate::opcodes::OpCode;
 
 mod cpu;
 mod memory;
@@ -30,7 +32,7 @@ macro_rules! size_check {
         if $imm > 1048575 {panic!("Immediate value exceeded limit for this instruction structure: imm = {}", $imm)}
     };
     ($op:expr, $imm:expr) => {
-        println!("op={} imm={}", $op, $imm);
+        println!("op={} imm/rs1={}", $op, $imm);
         if ($op as u32) > 127 {panic!("Invalid OpCode: {}", $op as u8)}
         if $imm > 33554431 {panic!("Immediate value exceeded limit for this instruction structure: imm = {}", $imm)}
     };
@@ -67,11 +69,16 @@ fn main() {
         };
     }
 
-    rvmasm!(OpCode::LOAD, 1, 2);
-    rvmasm!(OpCode::JUMP, 0x1FF_FFFF);
+    rvmasm!(OpCode::LOAD_IMM, 24, 0xF000);
+    rvmasm!(OpCode::ADD, 1, 2, 3);
+    rvmasm!(OpCode::BRAN_REG, 24);
     rvmasm!(OpCode::DIV, 1, 2, 3);
 
-    let mut cpu = cpu::CPU::new(cpu::CpuMode::Debug, &mem);
+    mem.data[0xF003] = (OpCode::RTRN as u8) << 1;
+
+    println!("{:8b}", mem.data[0xF003]);
+
+    let mut cpu = cpu::CPU::new(cpu::CpuMode::Debug, &mut mem);
     println!("\nStarted VM in {} mode", cpu.mode);
     loop {
         cpu.update();

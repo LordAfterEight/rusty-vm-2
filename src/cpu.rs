@@ -17,7 +17,7 @@ use crate::opcodes::{self, OpCode};
 #[derive(Debug)]
 pub struct CPU<'a> {
     pub mode: CpuMode,
-    pub memory: &'a crate::memory::Memory,
+    pub memory: &'a mut crate::memory::Memory,
     pub program_counter: usize,
     pub stack_pointer: u32,
     pub instruction: u32,
@@ -25,7 +25,7 @@ pub struct CPU<'a> {
 }
 
 impl<'a> CPU<'a> {
-    pub fn new(mode: CpuMode, memory: &'a crate::memory::Memory) -> Self {
+    pub fn new(mode: CpuMode, memory: &'a mut crate::memory::Memory) -> Self {
         Self {
             mode,
             memory,
@@ -48,25 +48,43 @@ impl<'a> CPU<'a> {
     /// Advances the stack pointer by one. Wrapping
     fn advance_sp(&mut self) {
         if self.stack_pointer < 0x7FFF_FFFF {
-            self.program_counter += 1;
+            self.stack_pointer += 1;
         } else {
-            self.program_counter = 0x4000_0000;
+            self.stack_pointer = 0x4000_0000;
         }
     }
 
     /// Moves the stack pointer back by one. Wrapping
     fn decrease_sp(&mut self) {
-        if self.program_counter > 0x4000_000 {
-            self.program_counter -= 1;
+        if self.stack_pointer > 0x4000_000 {
+            self.stack_pointer -= 1;
         } else {
-            self.program_counter = 0x7FFF_FFFF;
+            self.stack_pointer = 0x7FFF_FFFF;
         }
     }
 
-    fn get_instruction(&mut self, memory: &crate::memory::Memory) {
+    fn write_u32_to_ram(&mut self, value: u32) {
+        self.memory.data[(self.stack_pointer) as usize..((self.stack_pointer+4) as usize)].copy_from_slice(&value.to_le_bytes());
+        println!("Stored {value:032b} to RAM at addresses 0x{:08X} - 0x{:08X}", self.stack_pointer, self.stack_pointer + 4);
+        for _ in 0..4 {
+            self.advance_sp();
+        }
+    }
+
+    fn read_u32_from_ram(&mut self) -> u32 {
+        let mut value: [u8; 4] = [0; 4];
+        for i in 0..4 {
+            self.decrease_sp();
+            value[i] = self.memory.data[self.stack_pointer as usize];
+        }
+        println!("Read u32 {:032b} from RAM at addresses 0x{:08X} - 0x{:08X}", u32::from_be_bytes(value), self.stack_pointer, self.stack_pointer + 4);
+        return u32::from_be_bytes(value);
+    }
+
+    fn get_instruction(&mut self) {
         let mut instruction: [u8; 4] = [0; 4];
         for i in 0..4 {
-            instruction[i] = memory.data[self.program_counter];
+            instruction[i] = self.memory.data[self.program_counter];
             self.advance_pc();
         }
         self.instruction = u32::from_le_bytes(instruction);
@@ -89,17 +107,17 @@ impl<'a> CPU<'a> {
                     println!("Shutting down VM...");
                     std::process::exit(1);
                 } else {
-                    println!("Ignoring error...");
+                    println!("Ignoring error...\n");
                 }
             }
             CpuMode::Unstable => {
                 println!("{} {}", severity, error);
-                println!("Ignoring error...");
+                println!("Ignoring error...\n");
             }
             CpuMode::Debug => {
                 println!("{} {}", severity, error);
-                println!("Program Counter: 0x{:032X}", self.program_counter);
-                println!("Stack Pointer: 0x{:032X}", self.stack_pointer);
+                println!("Program Counter: 0x{:08X}", self.program_counter);
+                println!("Stack Pointer: 0x{:08X}", self.stack_pointer);
                 println!("Registers:\n{:?}", self.registers);
                 loop {
                     let mut input = [0u8; 1];
@@ -111,13 +129,43 @@ impl<'a> CPU<'a> {
     }
 
     fn tick(&mut self) -> Result<(), CpuError> {
-        self.get_instruction(self.memory);
-        let opcode = TryFrom::try_from((self.instruction >> 25) & 0x7F).expect("Invalid OpCode");
-        //println!("0x{:032X}: {opcode}", self.program_counter);
+        self.get_instruction();
+
+        println!("{:032b}", self.instruction);
+        let opcode_val = (self.instruction >> 25) & 0x7F;
+        let opcode = TryFrom::try_from(opcode_val).expect("Invalid OpCode");
+        println!("0x{:08X}: 0x{:02X} - {}", self.program_counter - 4, opcode_val, opcode);
         match opcode {
-            OpCode::LOAD => {},
-            OpCode::DIV => return Err(CpuError::new(self.program_counter, CpuErrorType::DivisionByZero)),
+            OpCode::LOAD_IMM => {
+                let register = (self.instruction >> 20) & 0x1F;
+                let value = self.instruction & 0xFFFFF;
+                self.registers[register as usize] = value;
+            },
+            OpCode::JUMP_IMM => {
+                let addr = self.instruction & 0x1FFFFFF;
+                self.program_counter = addr as usize;
+            },
+            OpCode::JUMP_REG => {
+                let register = self.instruction & 0x1F;
+                self.program_counter = self.registers[register as usize] as usize;
+            },
+            OpCode::BRAN_REG => {
+                self.write_u32_to_ram(self.program_counter as u32);
+                let register = self.instruction & 0x1F;
+                self.program_counter = self.registers[register as usize] as usize;
+            },
+            OpCode::RTRN => {
+                let addr = self.read_u32_from_ram();
+                self.program_counter = addr as usize;
+            }
+            OpCode::DIV => {
+            },
             _ => return Err(CpuError::new(self.program_counter, CpuErrorType::UnimplementedOpCode(opcode)))
+        }
+        loop {
+            let mut input = [0u8; 1];
+            std::io::stdin().read_exact(&mut input).unwrap();
+            if input[0] == b'\n' { break }
         }
         Ok(())
     }
@@ -144,7 +192,7 @@ pub enum CpuMode {
 }
 
 #[derive(Debug, Display, Error, Deref)]
-#[display("CPU error occured at {program_counter:#010X}: {error_type}")]
+#[display("CPU error occured at {:#010X}: {error_type}", program_counter - 4)]
 pub struct CpuError {
     #[deref]
     pub error_type: CpuErrorType,
