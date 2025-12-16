@@ -27,6 +27,9 @@ pub enum OpCode {
     /// OP(7) - xxx
     RTRN = 0x7F,
 
+    /// OP(7) - xxx
+    RTRN_POP = 0x7E,
+
     /// OP(7) - RDE(5) - RS1(5) - RS2(5) - MOD(10)
     ADD  = 0x20,
 

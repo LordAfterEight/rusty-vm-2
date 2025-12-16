@@ -69,16 +69,16 @@ fn main() {
         };
     }
 
-    rvmasm!(OpCode::LOAD_IMM, 24, 0xF000);
+    rvmasm!(OpCode::LOAD_IMM, 24, 0x24);
     rvmasm!(OpCode::ADD, 1, 2, 3);
     rvmasm!(OpCode::BRAN_REG, 24);
     rvmasm!(OpCode::DIV, 1, 2, 3);
 
-    mem.data[0xF003] = (OpCode::RTRN as u8) << 1;
+    mem.data[0x27] = (OpCode::RTRN_POP as u8) << 1;
 
-    println!("{:8b}", mem.data[0xF003]);
+    println!("{:8b}", mem.data[0x24]);
 
-    let mut cpu = cpu::CPU::new(cpu::CpuMode::Debug, &mut mem);
+    let mut cpu = cpu::CPU::new(cpu::CpuMode::Stable, &mut mem);
     println!("\nStarted VM in {} mode", cpu.mode);
     loop {
         cpu.update();
