@@ -3,6 +3,8 @@
 #[macro_use]
 extern crate derive_more;
 
+use colored::Colorize;
+
 use crate::opcodes::OpCode;
 
 mod cpu;
@@ -72,14 +74,16 @@ fn main() {
     rvmasm!(OpCode::LOAD_IMM, 24, 0x24);
     rvmasm!(OpCode::ADD, 1, 2, 3);
     rvmasm!(OpCode::BRAN_REG, 24);
-    rvmasm!(OpCode::DIV, 1, 2, 3);
+    rvmasm!(OpCode::ADD, 1, 1, 3);
+    rvmasm!(OpCode::JUMP_IMM, 0x28);
 
     mem.data[0x27] = (OpCode::RTRN_POP as u8) << 1;
+    mem.data[0x67] = (OpCode::HALT as u8) << 1;
 
     println!("{:8b}", mem.data[0x24]);
 
-    let mut cpu = cpu::CPU::new(cpu::CpuMode::Stable, &mut mem);
-    println!("\nStarted VM in {} mode", cpu.mode);
+    let mut cpu = cpu::CPU::new(cpu::CpuMode::Debug, &mut mem);
+    println!("\nStarted VM in {} mode", format!("{}", cpu.mode).green());
     loop {
         cpu.update();
     }

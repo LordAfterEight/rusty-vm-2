@@ -23,12 +23,12 @@ impl Memory {
             data: memory,
         }
     }
-    pub fn get_data_from_file(path: &str) -> Box<[u8; 0x4000_0000]> {
+    pub fn get_data_from_file(path: &str) -> Box<[u8; 0x1_0000_0000]> {
         let mut buf = vec![0u8];
         let mut file = std::fs::File::open(&path)
             .expect("Could not open File");
         file.read(buf.as_mut_slice()).unwrap();
-        let mut rom = Box::new([0u8;0x4000_0000]);
+        let mut rom = Box::new([0u8;0x1_0000_0000]);
         for (i, &byte) in buf.iter().enumerate() {
             rom[i] = byte;
         }

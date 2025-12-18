@@ -1,4 +1,5 @@
 use std::io::{Read};
+use colored::Colorize;
 
 use crate::opcodes::{OpCode};
 
@@ -104,8 +105,8 @@ impl<'a> CPU<'a> {
 
     fn handle_errors(&self, error: CpuError) {
         let severity = match error.is_severe() {
-            true => "Severe",
-            false => "Minor"
+            true => "Severe".red().bold(),
+            false => "Minor".yellow().bold()
         };
         match self.mode {
             CpuMode::Safe => {
@@ -138,6 +139,7 @@ impl<'a> CPU<'a> {
                 }
             }
         }
+        if error.error_type == CpuErrorType::Halt { loop {} }
     }
 
     fn tick(&mut self) -> Result<(), CpuError> {
@@ -179,14 +181,15 @@ impl<'a> CPU<'a> {
             OpCode::RTRN => {
                 let addr = self.read_u32_from_ram();
                 self.program_counter = addr as usize;
-            }
+            },
             OpCode::RTRN_POP => {
                 let addr = self.pop_u32_from_ram();
                 self.program_counter = addr as usize;
-            }
-            OpCode::DIV => {
             },
             OpCode::NOOP => {
+            },
+            OpCode::HALT => {
+                return Err(CpuError::new(self.program_counter, CpuErrorType::Halt))
             }
             _ => return Err(CpuError::new(self.program_counter, CpuErrorType::UnimplementedOpCode(opcode)))
         }
@@ -215,7 +218,7 @@ pub enum CpuMode {
 }
 
 #[derive(Debug, Display, Error, Deref)]
-#[display("CPU error occured at {:#010X}: {error_type}", program_counter - 4)]
+#[display("{} {}: {}", format!("CPU error occured at").red(), format!("{:010X}", program_counter - 4).green(), error_type)]
 pub struct CpuError {
     #[deref]
     pub error_type: CpuErrorType,
@@ -231,7 +234,7 @@ impl CpuError {
     }
 }
 
-#[derive(Debug, Display)]
+#[derive(Debug, Display, PartialEq)]
 pub enum CpuErrorType {
     StackOverflow,
     #[display("Invalid instruction: {:#010X}", _0)]

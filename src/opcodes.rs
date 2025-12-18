@@ -1,5 +1,5 @@
 #[repr(u32)]
-#[derive(Display, num_enum::TryFromPrimitive, Debug)]
+#[derive(Display, num_enum::TryFromPrimitive, Debug, PartialEq)]
 // 0x00 - 0x7F
 #[allow(non_camel_case_types)]
 pub enum OpCode {
@@ -25,10 +25,10 @@ pub enum OpCode {
     BRAN_REG = 0x71,
 
     /// OP(7) - xxx
-    RTRN = 0x7F,
+    RTRN = 0x7E,
 
     /// OP(7) - xxx
-    RTRN_POP = 0x7E,
+    RTRN_POP = 0x7D,
 
     /// OP(7) - RDE(5) - RS1(5) - RS2(5) - MOD(10)
     ADD  = 0x20,
@@ -41,4 +41,13 @@ pub enum OpCode {
 
     /// OP(7) - RDE(5) - RS1(5) - RS2(5) - MOD(10)
     DIV  = 0x23,
+
+    /// OP(7) - RDE(5) - RS1(5) - RS2(5) - MOD(10)
+    AND  = 0x24,
+
+    /// OP(7) - RDE(5) - RS1(5) - RS2(5) - MOD(10)
+    OR  = 0x25,
+
+    /// OP(7) - xxx
+    HALT = 0x7F
 }
