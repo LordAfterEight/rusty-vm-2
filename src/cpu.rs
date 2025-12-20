@@ -1,9 +1,9 @@
-use std::io::{Read};
 use colored::Colorize;
+use std::io::Read;
 
-use crate::opcodes::{OpCode};
+use crate::opcodes::OpCode;
 
-/// A 32-bit CPU with indirect register addressing
+/// A 32-bit 4-Core CPU
 ///
 /// # ==== General ====
 ///
@@ -16,24 +16,135 @@ use crate::opcodes::{OpCode};
 /// `xxxxxxx xxxxx xxxxx xxxxx`
 ///  OpCode   rd1   rs1   rs2
 #[derive(Debug)]
-pub struct CPU<'a> {
+pub struct CPU {
     pub mode: CpuMode,
-    pub memory: &'a mut crate::memory::Memory,
+    pub memory: std::sync::Arc<std::sync::Mutex<crate::memory::Memory>>,
+    pub cores: [Core; 4],
+}
+
+impl CPU {
+    pub fn new(
+        mode: CpuMode,
+        memory: std::sync::Arc<std::sync::Mutex<crate::memory::Memory>>,
+    ) -> Self {
+        let cores = std::array::from_fn(|i| Core::new(i));
+        Self {
+            mode,
+            memory,
+            cores,
+        }
+    }
+
+    fn handle_errors(&self, error: CpuError) {
+        let severity = match error.is_severe() {
+            true => "Severe".red().bold(),
+            false => "Minor".yellow().bold(),
+        };
+        match self.mode {
+            CpuMode::Safe => {
+                println!("{} {}", severity, error);
+                println!("Shutting down VM...");
+                std::process::exit(1);
+            }
+            CpuMode::Stable => {
+                println!("{} {}", severity, error);
+                if error.is_severe() {
+                    println!("Shutting down VM...");
+                    std::process::exit(1);
+                } else {
+                    println!("Ignoring error...\n");
+                }
+            }
+            CpuMode::Unstable => {
+                println!("{} {}", severity, error);
+                println!("Ignoring error...\n");
+            }
+            CpuMode::Debug => {
+                println!("{} {}", severity, error);
+                println!(
+                    "Program Counter: 0x{:08X}",
+                    self.cores[error.core_index].program_counter
+                );
+                println!(
+                    "Stack Pointer: 0x{:08X}",
+                    self.cores[error.core_index].stack_pointer
+                );
+                println!("Registers:\n{:?}", self.cores[error.core_index].registers);
+                loop {
+                    let mut input = [0u8; 1];
+                    std::io::stdin().read_exact(&mut input).unwrap();
+                    if input[0] == b'\n' {
+                        break;
+                    }
+                }
+            }
+        }
+        if error.error_type == CpuErrorType::Halt {
+            loop {}
+        }
+    }
+
+    pub fn update(&mut self) {
+        let mut handles = Vec::new();
+
+        for mut core in self.cores {
+            let memory = std::sync::Arc::clone(&self.memory);
+            let mode = &self.mode;
+
+            let handle = std::thread::Builder::new()
+                .name(format!("RustyVM-Core-{}", core.index))
+                .spawn(move || {
+                    println!("Spawned thread: {}", std::thread::current().name().unwrap());
+                    loop {
+                        let result = {
+                            let mut mem = memory.lock().unwrap();
+                            core.tick(&mut mem)
+                        };
+
+                        if let Err(e) = result {
+                            // send error back, log it, or panic
+                            println!("Core {} error: {}", core.index, e);
+                            break;
+                        }
+                loop {
+                    let mut input = [0u8; 1];
+                    std::io::stdin().read_exact(&mut input).unwrap();
+                    if input[0] == b'\n' {
+                        break;
+                    }
+                }
+                    }
+                }).unwrap();
+
+            handles.push(handle);
+        }
+
+        for handle in handles {
+            handle.join().unwrap();
+        }
+    }
+}
+
+#[derive(Debug, Copy, Clone)]
+pub struct Core {
     pub program_counter: usize,
     pub stack_pointer: u32,
     pub instruction: u32,
     pub registers: [u32; 32],
+    pub index: usize,
+    pub busy: bool,
 }
 
-impl<'a> CPU<'a> {
-    pub fn new(mode: CpuMode, memory: &'a mut crate::memory::Memory) -> Self {
+impl<'a> Core {
+    pub fn new(index: usize) -> Self {
+        println!("Created Core with index {index}");
         Self {
-            mode,
-            memory,
             program_counter: 0x0000_0000,
             stack_pointer: 0x4000_0000,
             instruction: 0b00000000_00000000_00000000_00000000,
             registers: [0; 32],
+            index: index,
+            busy: false,
         }
     }
 
@@ -64,143 +175,133 @@ impl<'a> CPU<'a> {
         }
     }
 
-    fn write_u32_to_ram(&mut self, value: u32) {
+    fn write_u32_to_ram(&mut self, memory: &'a mut crate::memory::Memory, value: u32) {
         let value = value.to_le_bytes();
         for i in 0..4 {
-            self.memory.data[self.stack_pointer as usize] = value[i];
+            memory.data[self.stack_pointer as usize] = value[i];
             self.advance_sp();
         }
-        println!("Stored {:032b} to RAM at addresses 0x{:08X} - 0x{:08X}", u32::from_le_bytes(value), self.stack_pointer, self.stack_pointer + 4);
+        println!(
+            "Stored {:032b} to RAM at addresses 0x{:08X} - 0x{:08X}",
+            u32::from_le_bytes(value),
+            self.stack_pointer,
+            self.stack_pointer + 4
+        );
     }
 
-    fn read_u32_from_ram(&mut self) -> u32 {
+    fn read_u32_from_ram(&mut self, memory: &'a mut crate::memory::Memory) -> u32 {
         let mut value: [u8; 4] = [0; 4];
         for i in 0..4 {
             self.decrease_sp();
-            value[i] = self.memory.data[self.stack_pointer as usize];
+            value[i] = memory.data[self.stack_pointer as usize];
         }
-        println!("Read u32 {:032b} from RAM at addresses 0x{:08X} - 0x{:08X}", u32::from_be_bytes(value), self.stack_pointer, self.stack_pointer + 4);
+        println!(
+            "Read u32 {:032b} from RAM at addresses 0x{:08X} - 0x{:08X}",
+            u32::from_be_bytes(value),
+            self.stack_pointer,
+            self.stack_pointer + 4
+        );
         return u32::from_be_bytes(value);
     }
 
-    fn pop_u32_from_ram(&mut self) -> u32 {
+    fn pop_u32_from_ram(&mut self, memory: &'a mut crate::memory::Memory) -> u32 {
         let mut value: [u8; 4] = [0; 4];
         for i in 0..4 {
             self.decrease_sp();
-            value[i] = self.memory.data[self.stack_pointer as usize];
-            self.memory.data[self.stack_pointer as usize] = 0;
+            value[i] = memory.data[self.stack_pointer as usize];
+            memory.data[self.stack_pointer as usize] = 0;
         }
-        println!("Read u32 {:032b} from RAM at addresses 0x{:08X} - 0x{:08X}", u32::from_be_bytes(value), self.stack_pointer, self.stack_pointer + 4);
+        println!(
+            "Read u32 {:032b} from RAM at addresses 0x{:08X} - 0x{:08X}",
+            u32::from_be_bytes(value),
+            self.stack_pointer,
+            self.stack_pointer + 4
+        );
         return u32::from_be_bytes(value);
     }
 
-    fn get_instruction(&mut self) {
+    fn get_instruction(&mut self, memory: &'a mut crate::memory::Memory) {
         let mut instruction: [u8; 4] = [0; 4];
         for i in 0..4 {
-            instruction[i] = self.memory.data[self.program_counter];
+            instruction[i] = memory.data[self.program_counter];
             self.advance_pc();
         }
         self.instruction = u32::from_le_bytes(instruction);
     }
 
-    fn handle_errors(&self, error: CpuError) {
-        let severity = match error.is_severe() {
-            true => "Severe".red().bold(),
-            false => "Minor".yellow().bold()
-        };
-        match self.mode {
-            CpuMode::Safe => {
-                println!("{} {}", severity, error);
-                println!("Shutting down VM...");
-                std::process::exit(1);
-            }
-            CpuMode::Stable => {
-                println!("{} {}", severity, error);
-                if error.is_severe() {
-                    println!("Shutting down VM...");
-                    std::process::exit(1);
-                } else {
-                    println!("Ignoring error...\n");
-                }
-            }
-            CpuMode::Unstable => {
-                println!("{} {}", severity, error);
-                println!("Ignoring error...\n");
-            }
-            CpuMode::Debug => {
-                println!("{} {}", severity, error);
-                println!("Program Counter: 0x{:08X}", self.program_counter);
-                println!("Stack Pointer: 0x{:08X}", self.stack_pointer);
-                println!("Registers:\n{:?}", self.registers);
-                loop {
-                    let mut input = [0u8; 1];
-                    std::io::stdin().read_exact(&mut input).unwrap();
-                    if input[0] == b'\n' { break }
-                }
-            }
-        }
-        if error.error_type == CpuErrorType::Halt { loop {} }
-    }
-
-    fn tick(&mut self) -> Result<(), CpuError> {
-        self.get_instruction();
+    fn tick(&mut self, memory: &mut crate::memory::Memory) -> Result<(), CpuError> {
+        self.busy = true;
+        println!("\nCore {}", format!("{}", self.index).green());
+        self.get_instruction(memory);
         let opcode_val = (self.instruction >> 25) & 0x7F;
         let opcode = match TryFrom::try_from(opcode_val) {
             Ok(opcode) => opcode,
             Err(_) => {
-                println!("Failed to decode OpCode at 0x{:08X}", self.program_counter - 4);
+                println!(
+                    "\nFailed to decode OpCode at 0x{:08X}",
+                    self.program_counter - 4
+                );
                 OpCode::NOOP
             }
         };
-        println!("\n0x{:08X}: 0x{:02X} - {}", self.program_counter - 4, opcode_val, opcode);
+        println!(
+            "0x{:08X}: 0x{:02X} - {}",
+            self.program_counter - 4,
+            opcode_val,
+            opcode
+        );
         match opcode {
             OpCode::LOAD_IMM => {
                 let register = (self.instruction >> 20) & 0x1F;
                 let value = self.instruction & 0xFFFFF;
                 self.registers[register as usize] = value;
                 println!("Loaded value {} into register {}", value, register);
-            },
+            }
             OpCode::JUMP_IMM => {
                 let addr = self.instruction & 0x1FFFFFF;
                 self.program_counter = addr as usize;
-            },
+            }
             OpCode::JUMP_REG => {
                 let register = self.instruction & 0x1F;
                 self.program_counter = self.registers[register as usize] as usize;
-            },
+            }
             OpCode::BRAN_IMM => {
-                self.write_u32_to_ram(self.program_counter as u32);
+                self.write_u32_to_ram(memory, self.program_counter as u32);
                 let addr = self.instruction & 0x1FFFFFF;
                 self.program_counter = addr as usize;
-            },
+            }
             OpCode::BRAN_REG => {
-                self.write_u32_to_ram(self.program_counter as u32);
+                self.write_u32_to_ram(memory, self.program_counter as u32);
                 let register = self.instruction & 0x1F;
                 self.program_counter = self.registers[register as usize] as usize;
-            },
-            OpCode::RTRN => {
-                let addr = self.read_u32_from_ram();
-                self.program_counter = addr as usize;
-            },
-            OpCode::RTRN_POP => {
-                let addr = self.pop_u32_from_ram();
-                self.program_counter = addr as usize;
-            },
-            OpCode::NOOP => {
-            },
-            OpCode::HALT => {
-                return Err(CpuError::new(self.program_counter, CpuErrorType::Halt))
             }
-            _ => return Err(CpuError::new(self.program_counter, CpuErrorType::UnimplementedOpCode(opcode)))
+            OpCode::RTRN => {
+                let addr = self.read_u32_from_ram(memory);
+                self.program_counter = addr as usize;
+            }
+            OpCode::RTRN_POP => {
+                let addr = self.pop_u32_from_ram(memory);
+                self.program_counter = addr as usize;
+            }
+            OpCode::NOOP => {
+                self.busy = false;
+            }
+            OpCode::HALT => {
+                return Err(CpuError::new(
+                    self.program_counter,
+                    CpuErrorType::Halt,
+                    self.index,
+                ));
+            }
+            _ => {
+                return Err(CpuError::new(
+                    self.program_counter,
+                    CpuErrorType::UnimplementedOpCode(opcode),
+                    self.index,
+                ));
+            }
         }
         Ok(())
-    }
-
-    pub fn update(&mut self) {
-        match self.tick() {
-            Ok(_) => {}
-            Err(e) => self.handle_errors(e),
-        }
     }
 }
 
@@ -218,18 +319,20 @@ pub enum CpuMode {
 }
 
 #[derive(Debug, Display, Error, Deref)]
-#[display("{} {}: {}", format!("CPU error occured at").red(), format!("{:010X}", program_counter - 4).green(), error_type)]
+#[display("{} {}: {}", format!("CPU error occured in Core:{} at", core_index).red(), format!("{:010X}", program_counter - 4).green(), error_type)]
 pub struct CpuError {
     #[deref]
     pub error_type: CpuErrorType,
-    pub program_counter: usize
+    pub program_counter: usize,
+    pub core_index: usize,
 }
 
 impl CpuError {
-    pub fn new(program_counter: usize, error_type: CpuErrorType) -> Self {
+    pub fn new(program_counter: usize, error_type: CpuErrorType, core_index: usize) -> Self {
         Self {
             error_type,
-            program_counter
+            program_counter,
+            core_index,
         }
     }
 }
