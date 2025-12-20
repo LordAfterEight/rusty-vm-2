@@ -6,6 +6,7 @@ extern crate derive_more;
 #[macro_use]
 extern crate tracing;
 
+use tracing::level_filters::LevelFilter;
 use tracing_subscriber::{fmt, layer::SubscriberExt, prelude::*, EnvFilter};
 
 use crate::opcodes::OpCode;
@@ -15,7 +16,7 @@ mod memory;
 mod opcodes;
 
 fn main() {
-    let filter = EnvFilter::from_default_env();
+    let filter = EnvFilter::builder().with_default_directive(LevelFilter::TRACE.into()).from_env_lossy();
     let stdout_layer = fmt::layer().with_writer(std::io::stdout).with_filter(filter.clone());
     let log_file = std::fs::File::create("log.json").unwrap();
     let (non_blocking,_guard) = tracing_appender::non_blocking(log_file);
