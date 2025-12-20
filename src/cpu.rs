@@ -30,7 +30,7 @@ impl CPU {
         mode: CpuMode,
         memory: std::sync::Arc<std::sync::Mutex<crate::memory::Memory>>,
     ) -> Self {
-        let cores = std::array::from_fn(|i| Core::new(i));
+        let cores = std::array::from_fn(|i| Core::new(i.try_into().unwrap()));
         Self {
             mode,
             memory,
@@ -61,13 +61,13 @@ impl CPU {
             CpuMode::Debug => {
                 info!(
                     "Program Counter: 0x{:08X}",
-                    self.cores[error.core_index].program_counter
+                    self.cores[error.core_index as usize].program_counter
                 );
                 info!(
                     "Stack Pointer: 0x{:08X}",
-                    self.cores[error.core_index].stack_pointer
+                    self.cores[error.core_index as usize].stack_pointer
                 );
-                info!("Registers: {:?}", self.cores[error.core_index].registers);
+                info!("Registers: {:?}", self.cores[error.core_index as usize].registers);
                 loop {
                     let mut input = [0u8; 1];
                     std::io::stdin().read_exact(&mut input).unwrap();
@@ -124,28 +124,40 @@ impl CPU {
 
 #[derive(Debug, Copy, Clone)]
 pub struct Core {
-    pub program_counter: usize,
+    pub program_counter: u32,
     pub stack_pointer: u32,
-    pub instruction: u32,
     pub registers: [u32; 32],
-    pub index: usize,
+    pub index: u32,
     pub busy: bool,
 }
 
 impl<'a> Core {
-    pub fn new(index: usize) -> Self {
+    pub fn new(index: u32) -> Self {
         info!("Created Core with index {index}");
         Self {
-            program_counter: 0x0000_0000,
+            program_counter: 0x0000_0000 + index*4,
             stack_pointer: 0x4000_0000,
-            instruction: 0b00000000_00000000_00000000_00000000,
             registers: [0; 32],
             index: index,
             busy: false,
         }
     }
 
-    /// Advances the program counter by one. Wrapping
+    fn reset_soft(&mut self, memory: &mut crate::memory::Memory) {
+        self.program_counter = 0x0+self.index*4;
+        let new_addr = self.fetch_u32(memory);
+        self.program_counter = new_addr;
+        self.stack_pointer = 0x4000_0000;
+    }
+
+    fn reset_hard(&mut self, memory: &mut crate::memory::Memory) {
+        self.reset_soft(memory);
+        for register in self.registers.iter_mut() {
+            *register = 0;
+        }
+    }
+
+    /// Advances the program counter by one. Wrapping.
     fn advance_pc(&mut self) {
         if self.program_counter < 0x4000_0000 {
             self.program_counter += 1;
@@ -154,7 +166,7 @@ impl<'a> Core {
         }
     }
 
-    /// Advances the stack pointer by one. Wrapping
+    /// Advances the stack pointer by one. Wrapping.
     fn advance_sp(&mut self) {
         if self.stack_pointer < 0x8000_0000 {
             self.stack_pointer += 1;
@@ -163,7 +175,7 @@ impl<'a> Core {
         }
     }
 
-    /// Moves the stack pointer back by one. Wrapping
+    /// Moves the stack pointer back by one. Wrapping.
     fn decrease_sp(&mut self) {
         if self.stack_pointer > 0x4000_0000 {
             self.stack_pointer -= 1;
@@ -217,19 +229,19 @@ impl<'a> Core {
         return u32::from_be_bytes(value);
     }
 
-    fn get_instruction(&mut self, memory: &'a mut crate::memory::Memory) {
+    fn fetch_u32(&mut self, memory: &'a mut crate::memory::Memory) -> u32{
         let mut instruction: [u8; 4] = [0; 4];
         for i in 0..4 {
-            instruction[i] = memory.data[self.program_counter];
+            instruction[i] = memory.data[self.program_counter as usize];
             self.advance_pc();
         }
-        self.instruction = u32::from_le_bytes(instruction);
+        u32::from_le_bytes(instruction)
     }
 
     fn tick(&mut self, memory: &mut crate::memory::Memory) -> Result<(), CpuError> {
         self.busy = true;
-        self.get_instruction(memory);
-        let opcode_val = (self.instruction >> 25) & 0x7F;
+        let instruction = self.fetch_u32(memory);
+        let opcode_val = (instruction >> 25) & 0x7F;
         let opcode = match TryFrom::try_from(opcode_val) {
             Ok(opcode) => opcode,
             Err(_) => {
@@ -250,40 +262,42 @@ impl<'a> Core {
         );
         match opcode {
             OpCode::LOAD_IMM => {
-                let register = (self.instruction >> 20) & 0x1F;
-                let value = self.instruction & 0xFFFFF;
+                let register = (instruction >> 20) & 0x1F;
+                let value = instruction & 0xFFFFF;
                 self.registers[register as usize] = value;
                 info!("Loaded value {} into register {}", value, register);
             }
             OpCode::JUMP_IMM => {
-                let addr = self.instruction & 0x1FFFFFF;
-                self.program_counter = addr as usize;
+                let addr = instruction & 0x1FFFFFF;
+                self.program_counter = addr;
             }
             OpCode::JUMP_REG => {
-                let register = self.instruction & 0x1F;
-                self.program_counter = self.registers[register as usize] as usize;
+                let register = instruction & 0x1F;
+                self.program_counter = self.registers[register as usize];
             }
             OpCode::BRAN_IMM => {
                 self.write_u32_to_ram(memory, self.program_counter as u32);
-                let addr = self.instruction & 0x1FFFFFF;
-                self.program_counter = addr as usize;
+                let addr = instruction & 0x1FFFFFF;
+                self.program_counter = addr;
             }
             OpCode::BRAN_REG => {
                 self.write_u32_to_ram(memory, self.program_counter as u32);
-                let register = self.instruction & 0x1F;
-                self.program_counter = self.registers[register as usize] as usize;
+                let register = instruction & 0x1F;
+                self.program_counter = self.registers[register as usize];
             }
             OpCode::RTRN => {
                 let addr = self.read_u32_from_ram(memory);
-                self.program_counter = addr as usize;
+                self.program_counter = addr;
             }
             OpCode::RTRN_POP => {
                 let addr = self.pop_u32_from_ram(memory);
-                self.program_counter = addr as usize;
+                self.program_counter = addr;
             }
             OpCode::NOOP => {
                 self.busy = false;
             }
+            OpCode::RSET_SOFT => self.reset_soft(memory),
+            OpCode::RSET_HARD => self.reset_hard(memory),
             OpCode::HALT => {
                 return Err(CpuError::new(
                     self.program_counter,
@@ -321,12 +335,12 @@ pub enum CpuMode {
 pub struct CpuError {
     #[deref]
     pub error_type: CpuErrorType,
-    pub program_counter: usize,
-    pub core_index: usize,
+    pub program_counter: u32,
+    pub core_index: u32,
 }
 
 impl CpuError {
-    pub fn new(program_counter: usize, error_type: CpuErrorType, core_index: usize) -> Self {
+    pub fn new(program_counter: u32, error_type: CpuErrorType, core_index: u32) -> Self {
         Self {
             error_type,
             program_counter,
