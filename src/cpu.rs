@@ -20,6 +20,7 @@ pub struct CPU {
     pub mode: CpuMode,
     pub memory: std::sync::Arc<std::sync::Mutex<crate::memory::Memory>>,
     pub cores: [Core; 4],
+    pub channel: (std::sync::mpsc::Sender<CpuError>, std::sync::mpsc::Receiver<CpuError>)
 }
 
 impl CPU {
@@ -32,6 +33,7 @@ impl CPU {
             mode,
             memory,
             cores,
+            channel: std::sync::mpsc::channel::<CpuError>()
         }
     }
 
@@ -84,12 +86,12 @@ impl CPU {
         }
     }
 
-    pub fn update(&mut self) {
+    pub fn run(&mut self) {
         let mut handles = Vec::new();
 
         for mut core in self.cores {
             let memory = std::sync::Arc::clone(&self.memory);
-            let mode = &self.mode;
+            let tx = self.channel.0.clone();
 
             let handle = std::thread::Builder::new()
                 .name(format!("RustyVM-Core-{}", core.index))
@@ -103,16 +105,10 @@ impl CPU {
 
                         if let Err(e) = result {
                             // send error back, log it, or panic
-                            println!("Core {} error: {}", core.index, e);
+                            println!("Core {} error: {} {}", core.index, format!("{}", if e.is_minor() {"Minor".yellow()} else {"Severe".red()}), e);
+                            tx.send(e).unwrap();
                             break;
                         }
-                loop {
-                    let mut input = [0u8; 1];
-                    std::io::stdin().read_exact(&mut input).unwrap();
-                    if input[0] == b'\n' {
-                        break;
-                    }
-                }
                     }
                 }).unwrap();
 
@@ -121,6 +117,15 @@ impl CPU {
 
         for handle in handles {
             handle.join().unwrap();
+        }
+
+        loop {
+            match self.channel.1.recv() {
+                Ok(error) => {
+                    self.handle_errors(error);
+                }
+                Err(_) => break, // all cores shut down
+            }
         }
     }
 }
@@ -319,7 +324,7 @@ pub enum CpuMode {
 }
 
 #[derive(Debug, Display, Error, Deref)]
-#[display("{} {}: {}", format!("CPU error occured in Core:{} at", core_index).red(), format!("{:010X}", program_counter - 4).green(), error_type)]
+#[display("{} {}: {}", format!("CPU error occured in Core:{} at", core_index).red(), format!("0x{:08X}", program_counter - 4).green(), error_type)]
 pub struct CpuError {
     #[deref]
     pub error_type: CpuErrorType,
