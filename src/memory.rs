@@ -7,16 +7,16 @@ pub struct Memory {
 
 impl Memory {
     pub fn empty() -> Self {
-        println!("Allocating 4GiB of VM storage to system RAM...");
+        info!("Allocating 4GiB of VM storage to system RAM...");
         let memory = vec![0u8; 0x1_0000_0000].into_boxed_slice();
         Self {
             data: memory,
         }
     }
     pub fn from_file(path: &str) -> Self {
-        println!("Allocating 4GiB of VM storage to system RAM...");
+        info!("Allocating 4GiB of VM storage to system RAM...");
         let mut memory = vec![0u8; 0x1_0000_0000].into_boxed_slice();
-        println!("Loading ROM...");
+        info!("Loading ROM...");
         let rom_data = Memory::get_data_from_file(path);
         memory[0..rom_data.len()].copy_from_slice(rom_data.as_slice());
         Self {

@@ -1,4 +1,3 @@
-use colored::Colorize;
 use std::io::Read;
 
 use crate::opcodes::OpCode;
@@ -20,7 +19,10 @@ pub struct CPU {
     pub mode: CpuMode,
     pub memory: std::sync::Arc<std::sync::Mutex<crate::memory::Memory>>,
     pub cores: [Core; 4],
-    pub channel: (std::sync::mpsc::Sender<CpuError>, std::sync::mpsc::Receiver<CpuError>)
+    pub channel: (
+        std::sync::mpsc::Sender<CpuError>,
+        std::sync::mpsc::Receiver<CpuError>,
+    ),
 }
 
 impl CPU {
@@ -33,45 +35,39 @@ impl CPU {
             mode,
             memory,
             cores,
-            channel: std::sync::mpsc::channel::<CpuError>()
+            channel: std::sync::mpsc::channel::<CpuError>(),
         }
     }
 
     fn handle_errors(&self, error: CpuError) {
-        let severity = match error.is_severe() {
-            true => "Severe".red().bold(),
-            false => "Minor".yellow().bold(),
-        };
+        let severity = error.severity();
+        info!(?severity, "Handling error: {}", error);
         match self.mode {
             CpuMode::Safe => {
-                println!("{} {}", severity, error);
-                println!("Shutting down VM...");
+                info!("Shutting down VM...");
                 std::process::exit(1);
             }
             CpuMode::Stable => {
-                println!("{} {}", severity, error);
-                if error.is_severe() {
-                    println!("Shutting down VM...");
+                if matches!(severity, CpuErrorSeverity::Severe) {
+                    info!("Shutting down VM...");
                     std::process::exit(1);
                 } else {
-                    println!("Ignoring error...\n");
+                    info!("Ignoring error...\n");
                 }
             }
             CpuMode::Unstable => {
-                println!("{} {}", severity, error);
-                println!("Ignoring error...\n");
+                info!("Ignoring error...\n");
             }
             CpuMode::Debug => {
-                println!("{} {}", severity, error);
-                println!(
+                info!(
                     "Program Counter: 0x{:08X}",
                     self.cores[error.core_index].program_counter
                 );
-                println!(
+                info!(
                     "Stack Pointer: 0x{:08X}",
                     self.cores[error.core_index].stack_pointer
                 );
-                println!("Registers:\n{:?}", self.cores[error.core_index].registers);
+                info!("Registers: {:?}", self.cores[error.core_index].registers);
                 loop {
                     let mut input = [0u8; 1];
                     std::io::stdin().read_exact(&mut input).unwrap();
@@ -96,7 +92,7 @@ impl CPU {
             let handle = std::thread::Builder::new()
                 .name(format!("RustyVM-Core-{}", core.index))
                 .spawn(move || {
-                    println!("Spawned thread: {}", std::thread::current().name().unwrap());
+                    info!("Spawned thread: {}", std::thread::current().name().unwrap());
                     loop {
                         let result = {
                             let mut mem = memory.lock().unwrap();
@@ -104,19 +100,15 @@ impl CPU {
                         };
 
                         if let Err(e) = result {
-                            // send error back, log it, or panic
-                            println!("Core {} error: {} {}", core.index, format!("{}", if e.is_minor() {"Minor".yellow()} else {"Severe".red()}), e);
+                            error!(core=core.index, severity=?e.severity(), "Core {} error: {} {}", core.index, e.severity(), e);
                             tx.send(e).unwrap();
                             break;
                         }
                     }
-                }).unwrap();
+                })
+                .unwrap();
 
             handles.push(handle);
-        }
-
-        for handle in handles {
-            handle.join().unwrap();
         }
 
         loop {
@@ -124,7 +116,7 @@ impl CPU {
                 Ok(error) => {
                     self.handle_errors(error);
                 }
-                Err(_) => break, // all cores shut down
+                Err(_) => break,
             }
         }
     }
@@ -142,7 +134,7 @@ pub struct Core {
 
 impl<'a> Core {
     pub fn new(index: usize) -> Self {
-        println!("Created Core with index {index}");
+        info!("Created Core with index {index}");
         Self {
             program_counter: 0x0000_0000,
             stack_pointer: 0x4000_0000,
@@ -186,7 +178,7 @@ impl<'a> Core {
             memory.data[self.stack_pointer as usize] = value[i];
             self.advance_sp();
         }
-        println!(
+        info!(
             "Stored {:032b} to RAM at addresses 0x{:08X} - 0x{:08X}",
             u32::from_le_bytes(value),
             self.stack_pointer,
@@ -200,7 +192,7 @@ impl<'a> Core {
             self.decrease_sp();
             value[i] = memory.data[self.stack_pointer as usize];
         }
-        println!(
+        info!(
             "Read u32 {:032b} from RAM at addresses 0x{:08X} - 0x{:08X}",
             u32::from_be_bytes(value),
             self.stack_pointer,
@@ -216,7 +208,7 @@ impl<'a> Core {
             value[i] = memory.data[self.stack_pointer as usize];
             memory.data[self.stack_pointer as usize] = 0;
         }
-        println!(
+        info!(
             "Read u32 {:032b} from RAM at addresses 0x{:08X} - 0x{:08X}",
             u32::from_be_bytes(value),
             self.stack_pointer,
@@ -236,20 +228,21 @@ impl<'a> Core {
 
     fn tick(&mut self, memory: &mut crate::memory::Memory) -> Result<(), CpuError> {
         self.busy = true;
-        println!("\nCore {}", format!("{}", self.index).green());
         self.get_instruction(memory);
         let opcode_val = (self.instruction >> 25) & 0x7F;
         let opcode = match TryFrom::try_from(opcode_val) {
             Ok(opcode) => opcode,
             Err(_) => {
-                println!(
-                    "\nFailed to decode OpCode at 0x{:08X}",
+                error!(
+                    core=self.index,
+                    "Failed to decode OpCode at 0x{:08X}",
                     self.program_counter - 4
                 );
                 OpCode::NOOP
             }
         };
-        println!(
+        info!(
+            core=self.index,
             "0x{:08X}: 0x{:02X} - {}",
             self.program_counter - 4,
             opcode_val,
@@ -260,7 +253,7 @@ impl<'a> Core {
                 let register = (self.instruction >> 20) & 0x1F;
                 let value = self.instruction & 0xFFFFF;
                 self.registers[register as usize] = value;
-                println!("Loaded value {} into register {}", value, register);
+                info!("Loaded value {} into register {}", value, register);
             }
             OpCode::JUMP_IMM => {
                 let addr = self.instruction & 0x1FFFFFF;
@@ -324,7 +317,7 @@ pub enum CpuMode {
 }
 
 #[derive(Debug, Display, Error, Deref)]
-#[display("{} {}: {}", format!("CPU error occured in Core:{} at", core_index).red(), format!("0x{:08X}", program_counter - 4).green(), error_type)]
+#[display("{} {}: {}", format!("CPU error occured in Core:{} at", core_index), format!("0x{:08X}", program_counter - 4), error_type)]
 pub struct CpuError {
     #[deref]
     pub error_type: CpuErrorType,
@@ -342,6 +335,12 @@ impl CpuError {
     }
 }
 
+#[derive(PartialEq, Debug, Display)]
+pub enum CpuErrorSeverity {
+    Severe,
+    Minor,
+}
+
 #[derive(Debug, Display, PartialEq)]
 pub enum CpuErrorType {
     StackOverflow,
@@ -355,21 +354,18 @@ pub enum CpuErrorType {
 }
 
 impl Severity for CpuErrorType {
-    fn is_minor(&self) -> bool {
+    fn severity(&self) -> CpuErrorSeverity {
         match self {
-            CpuErrorType::StackOverflow => true,
-            CpuErrorType::InvalidInstruction(_) => true,
-            CpuErrorType::UnimplementedOpCode(_) => true,
-            CpuErrorType::Halt => true,
-            CpuErrorType::DivisionByZero => false,
-            CpuErrorType::StackOpOutOfBounds => false,
+            CpuErrorType::StackOverflow => CpuErrorSeverity::Severe,
+            CpuErrorType::InvalidInstruction(_) => CpuErrorSeverity::Severe,
+            CpuErrorType::UnimplementedOpCode(_) => CpuErrorSeverity::Severe,
+            CpuErrorType::Halt => CpuErrorSeverity::Severe,
+            CpuErrorType::DivisionByZero => CpuErrorSeverity::Minor,
+            CpuErrorType::StackOpOutOfBounds => CpuErrorSeverity::Minor,
         }
     }
 }
 
 pub trait Severity {
-    fn is_minor(&self) -> bool;
-    fn is_severe(&self) -> bool {
-        !self.is_minor()
-    }
+    fn severity(&self) -> CpuErrorSeverity;
 }

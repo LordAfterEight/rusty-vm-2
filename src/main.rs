@@ -3,7 +3,10 @@
 #[macro_use]
 extern crate derive_more;
 
-use colored::Colorize;
+#[macro_use]
+extern crate tracing;
+
+use tracing_subscriber::{fmt, layer::SubscriberExt, prelude::*, EnvFilter};
 
 use crate::opcodes::OpCode;
 
@@ -12,8 +15,15 @@ mod memory;
 mod opcodes;
 
 fn main() {
-    let mut addr: usize = 0;
-    // let mut mem = std::sync::Arc::new(std::sync::Mutex::new(memory::Memory::empty()));
+    let filter = EnvFilter::from_default_env();
+    let stdout_layer = fmt::layer().with_writer(std::io::stdout).with_filter(filter.clone());
+    let log_file = std::fs::File::create("log.json").unwrap();
+    let (non_blocking,_guard) = tracing_appender::non_blocking(log_file);
+    let json_layer = fmt::layer().json().with_writer(non_blocking).with_filter(filter);
+    tracing_subscriber::registry()
+        .with(stdout_layer)
+        .with(json_layer)
+        .init();
 
     let mut memory = memory::Memory::empty();
 
@@ -22,7 +32,6 @@ fn main() {
     let mem = std::sync::Arc::new(std::sync::Mutex::new(memory));
 
     let mut cpu = cpu::CPU::new(cpu::CpuMode::Debug, std::sync::Arc::clone(&mem));
-    println!("\nStarted VM in {} mode", format!("{}", cpu.mode).green());
+    info!("Started VM in {} mode", format!("{}", cpu.mode));
     cpu.run();
 }
-
