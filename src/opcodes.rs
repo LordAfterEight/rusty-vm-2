@@ -19,16 +19,10 @@ pub enum OpCode {
     JUMP_REG = 0x11,
 
     /// OP(7) - IMM(25)
-    BRAN_IMM = 0x30,
+    BRAN_IMM = 0x12,
 
     /// OP(7) - RS1(5) - xxx
-    BRAN_REG = 0x31,
-
-    /// OP(7) - xxx
-    RTRN = 0x3E,
-
-    /// OP(7) - xxx
-    RTRN_POP = 0x3D,
+    BRAN_REG = 0x13,
 
     /// OP(7) - RDE(5) - RS1(5) - RS2(5) - MOD(10)
     ADD = 0x20,
@@ -49,6 +43,12 @@ pub enum OpCode {
     OR = 0x25,
 
     /// OP(7) - xxx
+    RTRN = 0x3E,
+
+    /// OP(7) - xxx
+    RTRN_POP = 0x3D,
+
+    /// OP(7) - xxx
     RSET_SOFT = 0x40,
 
     /// OP(7) - xxx
@@ -56,4 +56,7 @@ pub enum OpCode {
 
     /// OP(7) - xxx
     HALT = 0x4F,
+
+    /// OP(7) - 
+    IRPT_SEND = 0x50,
 }

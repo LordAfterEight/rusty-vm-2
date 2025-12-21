@@ -37,6 +37,17 @@ fn main() {
 
     let mut memory = memory::Memory::empty();
 
+    memory.data[0x0] = 0x18; // Core 0 reset addr
+    memory.data[0x4] = 0x84; // Core 1 reset addr
+    memory.data[0x27] = (OpCode::IRPT_SEND as u8) << 1;
+    // xxxxxxxx xxxxxxxx xxxxxxxx xxxxxxxx
+    memory.data[0x26] = 0b00010000;
+    memory.data[0x25] = 0b10000000;
+
+    memory.data[0x87] = (OpCode::IRPT_SEND as u8) << 1;
+    memory.data[0x86] = 0b00000001;
+    memory.data[0x85] = 0b00000000;
+
     let mem = std::sync::Arc::new(std::sync::Mutex::new(memory));
 
     let mut cpu = cpu::CPU::new(cpu::CpuMode::Debug, std::sync::Arc::clone(&mem));

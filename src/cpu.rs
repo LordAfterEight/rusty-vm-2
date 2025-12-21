@@ -18,7 +18,7 @@ use crate::opcodes::OpCode;
 pub struct CPU {
     pub mode: CpuMode,
     pub memory: std::sync::Arc<std::sync::Mutex<crate::memory::Memory>>,
-    pub cores: [Core; 4],
+    pub cores: [Option<Core>; 4],
     pub channel: (
         std::sync::mpsc::Sender<CpuError>,
         std::sync::mpsc::Receiver<CpuError>,
@@ -30,7 +30,22 @@ impl CPU {
         mode: CpuMode,
         memory: std::sync::Arc<std::sync::Mutex<crate::memory::Memory>>,
     ) -> Self {
-        let cores = std::array::from_fn(|i| Core::new(i.try_into().unwrap()));
+        let mut tx_rx_pairs: Vec<_> = (0..4).map(|_| std::sync::mpsc::channel()).collect();
+
+        let all_senders: [std::sync::mpsc::Sender<Interrupt>; 4] = [
+            tx_rx_pairs[0].0.clone(),
+            tx_rx_pairs[1].0.clone(),
+            tx_rx_pairs[2].0.clone(),
+            tx_rx_pairs[3].0.clone(),
+        ];
+
+        let cores = std::array::from_fn(|i| {
+            let (_own_tx, own_rx) = tx_rx_pairs.remove(0);
+            let mut core = Core::new(i as u32, all_senders.clone(), own_rx, &memory);
+            if i == 0 { core.busy = true; info!("Assigned busy to core {}", i)}
+            Some(core)
+        });
+
         Self {
             mode,
             memory,
@@ -39,7 +54,7 @@ impl CPU {
         }
     }
 
-    fn handle_errors(&self, error: CpuError) {
+    fn handle_errors(&mut self, error: CpuError) {
         let severity = error.severity();
         info!(?severity, "Handling error: {}", error);
         match self.mode {
@@ -60,14 +75,12 @@ impl CPU {
             }
             CpuMode::Debug => {
                 info!(
-                    "Program Counter: 0x{:08X}",
-                    self.cores[error.core_index as usize].program_counter
+                    core=?error.core_index,
+                    "\nProgram Counter: 0x{:08X}\nStack Pointer: 0x{:08X}\nRegisters: {:?}\n",
+                    error.stack_pointer,
+                    error.program_counter,
+                    error.register_snapshot
                 );
-                info!(
-                    "Stack Pointer: 0x{:08X}",
-                    self.cores[error.core_index as usize].stack_pointer
-                );
-                info!("Registers: {:?}", self.cores[error.core_index as usize].registers);
                 loop {
                     let mut input = [0u8; 1];
                     std::io::stdin().read_exact(&mut input).unwrap();
@@ -77,15 +90,13 @@ impl CPU {
                 }
             }
         }
-        if error.error_type == CpuErrorType::Halt {
-            loop {}
-        }
     }
 
     pub fn run(&mut self) {
         let mut handles = Vec::new();
 
-        for mut core in self.cores {
+        for core in self.cores.iter_mut() {
+            let mut core = core.take().unwrap();
             let memory = std::sync::Arc::clone(&self.memory);
             let tx = self.channel.0.clone();
 
@@ -94,13 +105,23 @@ impl CPU {
                 .spawn(move || {
                     info!("Spawned thread: {}", std::thread::current().name().unwrap());
                     loop {
+                        if let Ok(interrupt) = core.receiver.try_recv() {
+                            core.handle_interrupts(interrupt, &memory);
+                        }
+
+                        if !core.busy {
+                            if let Ok(interrupt) = core.receiver.recv() {
+                                core.handle_interrupts(interrupt, &memory);
+                            }
+                            continue;
+                        }
+
                         let result = {
-                            let mut mem = memory.lock().unwrap();
-                            core.tick(&mut mem)
+                            core.tick(&memory)
                         };
 
                         if let Err(e) = result {
-                            error!(core=core.index, severity=?e.severity(), "Core {} error: {} {}", core.index, e.severity(), e);
+                            error!(core=core.index, "Core {} error: {}", core.index, e);
                             tx.send(e).unwrap();
                             break;
                         }
@@ -122,35 +143,46 @@ impl CPU {
     }
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug)]
 pub struct Core {
     pub program_counter: u32,
     pub stack_pointer: u32,
     pub registers: [u32; 32],
     pub index: u32,
     pub busy: bool,
+    pub receiver: std::sync::mpsc::Receiver<Interrupt>,
+    pub senders: [std::sync::mpsc::Sender<Interrupt>; 4],
 }
 
 impl<'a> Core {
-    pub fn new(index: u32) -> Self {
+    pub fn new(
+        index: u32,
+        senders: [std::sync::mpsc::Sender<Interrupt>; 4],
+        receiver: std::sync::mpsc::Receiver<Interrupt>,
+        memory: &std::sync::Arc<std::sync::Mutex<crate::memory::Memory>>
+    ) -> Self {
         info!("Created Core with index {index}");
-        Self {
-            program_counter: 0x0000_0000 + index*4,
+        let mut core = Self {
+            program_counter: 0x0000_0000 + index * 4,
             stack_pointer: 0x4000_0000,
             registers: [0; 32],
             index: index,
             busy: false,
-        }
+            senders,
+            receiver,
+        };
+        core.reset_hard(memory);
+        return core
     }
 
-    fn reset_soft(&mut self, memory: &mut crate::memory::Memory) {
-        self.program_counter = 0x0+self.index*4;
+    fn reset_soft(&mut self, memory: &std::sync::Arc<std::sync::Mutex<crate::memory::Memory>>) {
+        self.program_counter = 0x0 + self.index * 4;
         let new_addr = self.fetch_u32(memory);
         self.program_counter = new_addr;
         self.stack_pointer = 0x4000_0000;
     }
 
-    fn reset_hard(&mut self, memory: &mut crate::memory::Memory) {
+    fn reset_hard(&mut self, memory: &std::sync::Arc<std::sync::Mutex<crate::memory::Memory>>) {
         self.reset_soft(memory);
         for register in self.registers.iter_mut() {
             *register = 0;
@@ -184,10 +216,11 @@ impl<'a> Core {
         }
     }
 
-    fn write_u32_to_ram(&mut self, memory: &'a mut crate::memory::Memory, value: u32) {
+    fn write_u32_to_ram(&mut self, memory: &std::sync::Arc<std::sync::Mutex<crate::memory::Memory>>, value: u32) {
         let value = value.to_le_bytes();
         for i in 0..4 {
-            memory.data[self.stack_pointer as usize] = value[i];
+            let mut mem = memory.lock().unwrap();
+            mem.data[self.stack_pointer as usize] = value[i];
             self.advance_sp();
         }
         info!(
@@ -198,11 +231,12 @@ impl<'a> Core {
         );
     }
 
-    fn read_u32_from_ram(&mut self, memory: &'a mut crate::memory::Memory) -> u32 {
+    fn read_u32_from_ram(&mut self, memory: &std::sync::Arc<std::sync::Mutex<crate::memory::Memory>>) -> u32 {
         let mut value: [u8; 4] = [0; 4];
         for i in 0..4 {
             self.decrease_sp();
-            value[i] = memory.data[self.stack_pointer as usize];
+            let mem = memory.lock().unwrap();
+            value[i] = mem.data[self.stack_pointer as usize];
         }
         info!(
             "Read u32 {:032b} from RAM at addresses 0x{:08X} - 0x{:08X}",
@@ -213,12 +247,13 @@ impl<'a> Core {
         return u32::from_be_bytes(value);
     }
 
-    fn pop_u32_from_ram(&mut self, memory: &'a mut crate::memory::Memory) -> u32 {
+    fn pop_u32_from_ram(&mut self, memory: &std::sync::Arc<std::sync::Mutex<crate::memory::Memory>>) -> u32 {
         let mut value: [u8; 4] = [0; 4];
         for i in 0..4 {
             self.decrease_sp();
-            value[i] = memory.data[self.stack_pointer as usize];
-            memory.data[self.stack_pointer as usize] = 0;
+            let mut mem = memory.lock().unwrap();
+            value[i] = mem.data[self.stack_pointer as usize];
+            mem.data[self.stack_pointer as usize] = 0;
         }
         info!(
             "Read u32 {:032b} from RAM at addresses 0x{:08X} - 0x{:08X}",
@@ -229,24 +264,35 @@ impl<'a> Core {
         return u32::from_be_bytes(value);
     }
 
-    fn fetch_u32(&mut self, memory: &'a mut crate::memory::Memory) -> u32{
+    fn fetch_u32(&mut self, memory: &std::sync::Arc<std::sync::Mutex<crate::memory::Memory>>) -> u32 {
         let mut instruction: [u8; 4] = [0; 4];
+        let mem = memory.lock().unwrap();
         for i in 0..4 {
-            instruction[i] = memory.data[self.program_counter as usize];
+            instruction[i] = mem.data[self.program_counter as usize];
             self.advance_pc();
         }
         u32::from_le_bytes(instruction)
     }
 
-    fn tick(&mut self, memory: &mut crate::memory::Memory) -> Result<(), CpuError> {
-        self.busy = true;
-        let instruction = self.fetch_u32(memory);
+    fn handle_interrupts(&mut self, interrupt: Interrupt, memory: &std::sync::Arc<std::sync::Mutex<crate::memory::Memory>>) {
+        info!(core=self.index, "Core {} received {}", self.index, interrupt);
+        match interrupt.interrupt_type {
+            InterruptType::Halt => self.busy = false,
+            InterruptType::Resume => self.busy = true,
+            InterruptType::SoftReset => self.reset_soft(&memory),
+            InterruptType::HardReset => self.reset_hard(&memory),
+            InterruptType::Software(_) => {}
+        }
+    }
+
+    fn tick(&mut self, memory: &std::sync::Arc<std::sync::Mutex<crate::memory::Memory>>) -> Result<(), CpuError> {
+        let instruction = self.fetch_u32(&memory);
         let opcode_val = (instruction >> 25) & 0x7F;
         let opcode = match TryFrom::try_from(opcode_val) {
             Ok(opcode) => opcode,
             Err(_) => {
                 error!(
-                    core=self.index,
+                    core = self.index,
                     "Failed to decode OpCode at 0x{:08X}",
                     self.program_counter - 4
                 );
@@ -254,7 +300,7 @@ impl<'a> Core {
             }
         };
         info!(
-            core=self.index,
+            core = self.index,
             "0x{:08X}: 0x{:02X} - {}",
             self.program_counter - 4,
             opcode_val,
@@ -276,43 +322,68 @@ impl<'a> Core {
                 self.program_counter = self.registers[register as usize];
             }
             OpCode::BRAN_IMM => {
-                self.write_u32_to_ram(memory, self.program_counter as u32);
+                self.write_u32_to_ram(&memory, self.program_counter as u32);
                 let addr = instruction & 0x1FFFFFF;
                 self.program_counter = addr;
             }
             OpCode::BRAN_REG => {
-                self.write_u32_to_ram(memory, self.program_counter as u32);
+                self.write_u32_to_ram(&memory, self.program_counter as u32);
                 let register = instruction & 0x1F;
                 self.program_counter = self.registers[register as usize];
             }
             OpCode::RTRN => {
-                let addr = self.read_u32_from_ram(memory);
+                let addr = self.read_u32_from_ram(&memory);
                 self.program_counter = addr;
             }
             OpCode::RTRN_POP => {
-                let addr = self.pop_u32_from_ram(memory);
+                let addr = self.pop_u32_from_ram(&memory);
                 self.program_counter = addr;
             }
             OpCode::NOOP => {
-                self.busy = false;
             }
             OpCode::RSET_SOFT => self.reset_soft(memory),
             OpCode::RSET_HARD => self.reset_hard(memory),
             OpCode::HALT => {
                 return Err(CpuError::new(
                     self.program_counter,
+                    self.stack_pointer,
+                    self.registers,
                     CpuErrorType::Halt,
                     self.index,
                 ));
-            }
+            },
+            OpCode::IRPT_SEND => {
+                let target_idx = (instruction >> 20) & 0x1F;
+                let itype_val = (instruction >> 15) & 0x1F;
+                let payload = instruction & 0x7FFF;
+
+                if let Some(target_sender) = self.senders.get(target_idx as usize) {
+                    let msg = Interrupt {
+                        sender_id: self.index,
+                        interrupt_type: match itype_val {
+                            1 => InterruptType::Resume,
+                            2 => InterruptType::Halt,
+                            3 => InterruptType::SoftReset,
+                            4 => InterruptType::HardReset,
+                            _ => InterruptType::Software(itype_val),
+                        },
+                        data: Some(payload),
+                    };
+                    info!("Core {} sent {} to Core {}", self.index, msg, target_idx);
+                    let _ = target_sender.send(msg);
+                }
+            },
             _ => {
                 return Err(CpuError::new(
                     self.program_counter,
+                    self.stack_pointer,
+                    self.registers,
                     CpuErrorType::UnimplementedOpCode(opcode),
                     self.index,
                 ));
             }
         }
+        std::thread::sleep(std::time::Duration::from_millis(500));
         Ok(())
     }
 }
@@ -336,14 +407,18 @@ pub struct CpuError {
     #[deref]
     pub error_type: CpuErrorType,
     pub program_counter: u32,
+    pub stack_pointer: u32,
+    pub register_snapshot: [u32; 32],
     pub core_index: u32,
 }
 
 impl CpuError {
-    pub fn new(program_counter: u32, error_type: CpuErrorType, core_index: u32) -> Self {
+    pub fn new(program_counter: u32, stack_pointer: u32, register_snapshot: [u32; 32], error_type: CpuErrorType, core_index: u32) -> Self {
         Self {
             error_type,
             program_counter,
+            stack_pointer,
+            register_snapshot,
             core_index,
         }
     }
@@ -367,6 +442,10 @@ pub enum CpuErrorType {
     StackOpOutOfBounds,
 }
 
+pub trait Severity {
+    fn severity(&self) -> CpuErrorSeverity;
+}
+
 impl Severity for CpuErrorType {
     fn severity(&self) -> CpuErrorSeverity {
         match self {
@@ -380,6 +459,19 @@ impl Severity for CpuErrorType {
     }
 }
 
-pub trait Severity {
-    fn severity(&self) -> CpuErrorSeverity;
+#[derive(Debug, Display)]
+#[display("Interrupt {:?} {}", interrupt_type, if data.is_some() {format!("with data {}", data.unwrap())} else {"".to_string()})]
+pub struct Interrupt {
+    sender_id: u32,
+    interrupt_type: InterruptType,
+    data: Option<u32>
+}
+
+#[derive(Debug, Display)]
+pub enum InterruptType {
+    Resume,
+    Halt,
+    SoftReset,
+    HardReset,
+    Software(u32)
 }
