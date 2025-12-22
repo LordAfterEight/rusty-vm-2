@@ -13,6 +13,7 @@ use tracing_subscriber::{fmt, layer::SubscriberExt, prelude::*, EnvFilter};
 use crate::opcodes::OpCode;
 
 mod cpu;
+mod core;
 mod memory;
 mod opcodes;
 
