@@ -7,40 +7,66 @@ pub enum OpCode {
     NOOP = 0x00,
 
     /// OP(7) - RDE(5) - IMM(20)
+    /// Loads an immediate 20-bit value to register RDE
     LOAD_IMM = 0x01,
 
+    /// OP(7) - RDE(5) - IMM(20)
+    /// Loads an immediate 20-bit value to the upper 20 bits of register RDE
+    LDUP_IMM = 0x02,
+
     /// OP(7) - RS1(5) - IMM(20)
-    STOR_IMM = 0x02,
+    /// Writes the value of the specified register to the immediate 20-bit address
+    STOR_IMM = 0x03,
+
+    /// OP(7) - RDE(5) - RS1(5) - xxx
+    /// Loads a byte from the address stored in register RS1 to RDE
+    LOAD_BYTE = 0x04,
+
+    /// OP(7) - RS1(5) - RS2(5) - xxx
+    /// Writes the value from register RS1 to the address stored in register RS2
+    STOR_BYTE = 0x05,
 
     /// OP(7) - IMM(25)
+    /// Unconditionally jumps to the immediate 25-bit address
     JUMP_IMM = 0x10,
 
     /// OP(7) - RS1(5) - xxx
+    /// Unconditionally jumps to the address stored in the specified register RS1
     JUMP_REG = 0x11,
 
     /// OP(7) - IMM(25)
+    /// Unconditionally branches to the immediate 25-bit address
     BRAN_IMM = 0x12,
 
     /// OP(7) - RS1(5) - xxx
+    /// Unconditionally branches to the address stored in the specified register RS1
     BRAN_REG = 0x13,
 
-    /// OP(7) - RDE(5) - RS1(5) - RS2(5) - MOD(10)
+    /// OP(7) - RDE(5) - RS1(5) - RS2(5) - xxx
     ADD = 0x20,
 
-    /// OP(7) - RDE(5) - RS1(5) - RS2(5) - MOD(10)
+    /// OP(7) - RDE(5) - RS1(5) - RS2(5) - xxx
     SUB = 0x21,
 
-    /// OP(7) - RDE(5) - RS1(5) - RS2(5) - MOD(10)
+    /// OP(7) - RDE(5) - RS1(5) - RS2(5) - xxx
     MUL = 0x22,
 
-    /// OP(7) - RDE(5) - RS1(5) - RS2(5) - MOD(10)
+    /// OP(7) - RDE(5) - RS1(5) - RS2(5) - xxx
     DIV = 0x23,
 
-    /// OP(7) - RDE(5) - RS1(5) - RS2(5) - MOD(10)
+    /// OP(7) - RDE(5) - RS1(5) - RS2(5) - xxx
     AND = 0x24,
 
-    /// OP(7) - RDE(5) - RS1(5) - RS2(5) - MOD(10)
-    OR = 0x25,
+    /// OP(7) - RDE(5) - RS1(5) - RS2(5) - xxx
+    /// ORs the content or register RS1 and RS2, storing the result to register RDE
+    ORR = 0x25,
+
+    /// OP(7) - RDE(5) - IMM(20)
+    /// ORs the content of register RDE with the 20-bit immediate value
+    ORI = 0x26,
+
+    /// OP(7) - RDE(5) - RS1(5) - RS2(5) - xxx
+    XOR = 0x27,
 
     /// OP(7) - xxx
     RTRN = 0x3E,

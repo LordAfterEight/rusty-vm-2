@@ -37,6 +37,7 @@ fn main() {
 
     let mut memory = memory::Memory::empty();
 
+    /*
     memory.data[0x0] = 0x18; // Core 0 reset addr
     memory.data[0x4] = 0x84; // Core 1 reset addr
     memory.data[0x27] = (OpCode::IRPT_SEND as u8) << 1;
@@ -47,6 +48,34 @@ fn main() {
     memory.data[0x87] = (OpCode::IRPT_SEND as u8) << 1;
     memory.data[0x86] = 0b00000001;
     memory.data[0x85] = 0b00000000;
+
+    */
+
+    memory.data[0x0]  = 0x88;
+    memory.data[0x8B] = (OpCode::LDUP_IMM as u8) << 1;
+    memory.data[0x8A] = 0b00011111;
+    memory.data[0x89] = 0b11111111;
+    memory.data[0x88] = 0b11111111;
+
+    memory.data[0x8F] = (OpCode::ORI as u8) << 1;
+    memory.data[0x8E] = 0b00011000;
+    memory.data[0x8D] = 0b00001111;
+    memory.data[0x8C] = 0b11111111;
+
+    memory.data[0x93] = (OpCode::LDUP_IMM as u8) << 1;
+    memory.data[0x92] = 0b00101111;
+    memory.data[0x91] = 0b11111111;
+    memory.data[0x90] = 0b11111111;
+
+    memory.data[0x97] = (OpCode::ORI as u8) << 1;
+    memory.data[0x96] = 0b00101000;
+    memory.data[0x95] = 0b00001111;
+    memory.data[0x94] = 0b11111111;
+
+    memory.data[0x9B] = (OpCode::ADD as u8) << 1;
+    memory.data[0x9A] = 0b00010000;
+    memory.data[0x99] = 0b10001000;
+    memory.data[0x98] = 0b00000000;
 
     let mem = std::sync::Arc::new(std::sync::Mutex::new(memory));
 

@@ -67,20 +67,21 @@ impl CPU {
                     info!("Shutting down VM...");
                     std::process::exit(1);
                 } else {
-                    info!("Ignoring error...\n");
+                    info!("Ignoring error...");
                 }
             }
             CpuMode::Unstable => {
-                info!("Ignoring error...\n");
+                info!("Ignoring error...");
             }
             CpuMode::Debug => {
                 info!(
                     core=?error.core_index,
                     "\nProgram Counter: 0x{:08X}\nStack Pointer: 0x{:08X}\nRegisters: {:?}\n",
-                    error.stack_pointer,
                     error.program_counter,
+                    error.stack_pointer,
                     error.register_snapshot
                 );
+                info!(core=?error.core_index, "Press ENTER to let this core continue running");
                 loop {
                     let mut input = [0u8; 1];
                     std::io::stdin().read_exact(&mut input).unwrap();
@@ -122,8 +123,17 @@ impl CPU {
 
                         if let Err(e) = result {
                             error!(core=core.index, "Core {} error: {}", core.index, e);
+                            let error_severity = e.severity();
                             tx.send(e).unwrap();
-                            break;
+                            if error_severity == CpuErrorSeverity::Minor {
+                                loop {
+                                    let mut input = [0u8; 1];
+                                    std::io::stdin().read_exact(&mut input).unwrap();
+                                    if input[0] == b'\n' {
+                                        break;
+                                    }
+                                }
+                            }
                         }
                     }
                 })
@@ -148,8 +158,10 @@ pub struct Core {
     pub program_counter: u32,
     pub stack_pointer: u32,
     pub registers: [u32; 32],
+    pub eq_flag: bool,
     pub index: u32,
     pub busy: bool,
+    pub halted: bool,
     pub receiver: std::sync::mpsc::Receiver<Interrupt>,
     pub senders: [std::sync::mpsc::Sender<Interrupt>; 4],
 }
@@ -166,8 +178,10 @@ impl<'a> Core {
             program_counter: 0x0000_0000 + index * 4,
             stack_pointer: 0x4000_0000,
             registers: [0; 32],
+            eq_flag: false,
             index: index,
             busy: false,
+            halted: false,
             senders,
             receiver,
         };
@@ -216,11 +230,20 @@ impl<'a> Core {
         }
     }
 
+    fn write_byte(&self, memory: &std::sync::Arc<std::sync::Mutex<crate::memory::Memory>>, address: u32, value: u8) {
+        let mut mem = memory.lock().unwrap();
+        mem.data[address as usize] = value;
+    }
+
+    fn read_byte(&self, memory: &std::sync::Arc<std::sync::Mutex<crate::memory::Memory>>, address: u32) -> u8 {
+        let mem = memory.lock().unwrap();
+        mem.data[address as usize]
+    }
+
     fn write_u32_to_ram(&mut self, memory: &std::sync::Arc<std::sync::Mutex<crate::memory::Memory>>, value: u32) {
         let value = value.to_le_bytes();
         for i in 0..4 {
-            let mut mem = memory.lock().unwrap();
-            mem.data[self.stack_pointer as usize] = value[i];
+            self.write_byte(memory, self.stack_pointer, value[i]);
             self.advance_sp();
         }
         info!(
@@ -235,8 +258,7 @@ impl<'a> Core {
         let mut value: [u8; 4] = [0; 4];
         for i in 0..4 {
             self.decrease_sp();
-            let mem = memory.lock().unwrap();
-            value[i] = mem.data[self.stack_pointer as usize];
+            value[i] = self.read_byte(memory, self.stack_pointer);
         }
         info!(
             "Read u32 {:032b} from RAM at addresses 0x{:08X} - 0x{:08X}",
@@ -277,11 +299,10 @@ impl<'a> Core {
     fn handle_interrupts(&mut self, interrupt: Interrupt, memory: &std::sync::Arc<std::sync::Mutex<crate::memory::Memory>>) {
         info!(core=self.index, "Core {} received {}", self.index, interrupt);
         match interrupt.interrupt_type {
-            InterruptType::Halt => self.busy = false,
-            InterruptType::Resume => self.busy = true,
+            InterruptType::Halt => self.halted = false,
+            InterruptType::Resume => self.halted = true,
             InterruptType::SoftReset => self.reset_soft(&memory),
             InterruptType::HardReset => self.reset_hard(&memory),
-            InterruptType::Software(_) => {}
         }
     }
 
@@ -308,39 +329,106 @@ impl<'a> Core {
         );
         match opcode {
             OpCode::LOAD_IMM => {
-                let register = (instruction >> 20) & 0x1F;
+                let rde = (instruction >> 20) & 0x1F;
                 let value = instruction & 0xFFFFF;
-                self.registers[register as usize] = value;
-                info!("Loaded value {} into register {}", value, register);
+                self.registers[rde as usize] = value;
+                info!(core=?self.index, "Loaded value {} into register {}", value, rde);
+            },
+            OpCode::LDUP_IMM => {
+                let rde = (instruction >> 20) & 0x1F;
+                let value = instruction & 0xFFFFF;
+                self.registers[rde as usize] = value << 12;
+                info!(core=?self.index, "Loaded value {} into register {}", value, rde);
+            },
+            OpCode::LOAD_BYTE => {
+                let rde = (instruction >> 20) & 0x1F;
+                let addr = (instruction >> 15) & 0x1F;
+                let value = self.read_byte(memory, addr);
+                self.registers[rde as usize] = value as u32;
+                info!(core=?self.index, "Read value {} from 0x{:08X}", value, addr);
+            },
+            OpCode::STOR_BYTE => {
+                let addr = (instruction >> 20) & 0x1F;
+                let value = self.registers[((instruction >> 15) & 0x1F) as usize];
+                info!(core=?self.index, "Writing value {} to 0x{:08X}", value, addr);
+                self.write_byte(memory, addr, value as u8);
             }
             OpCode::JUMP_IMM => {
                 let addr = instruction & 0x1FFFFFF;
+                info!(core=?self.index, "Jumping to address 0x{:08X}", addr);
                 self.program_counter = addr;
-            }
+            },
             OpCode::JUMP_REG => {
-                let register = instruction & 0x1F;
-                self.program_counter = self.registers[register as usize];
-            }
+                let rs1 = instruction & 0x1F;
+                info!(core=?self.index, "Jumping to address 0x{:08X}", self.registers[rs1 as usize]);
+                self.program_counter = self.registers[rs1 as usize];
+            },
             OpCode::BRAN_IMM => {
                 self.write_u32_to_ram(&memory, self.program_counter as u32);
                 let addr = instruction & 0x1FFFFFF;
+                info!(core=?self.index, "Branching to address 0x{:08X}", addr);
                 self.program_counter = addr;
-            }
+            },
             OpCode::BRAN_REG => {
                 self.write_u32_to_ram(&memory, self.program_counter as u32);
-                let register = instruction & 0x1F;
-                self.program_counter = self.registers[register as usize];
-            }
+                let rs1 = instruction & 0x1F;
+                info!(core=?self.index, "branching to address 0x{:08X}", self.registers[rs1 as usize]);
+                self.program_counter = self.registers[rs1 as usize];
+            },
             OpCode::RTRN => {
                 let addr = self.read_u32_from_ram(&memory);
+                info!(core=?self.index, "Returning to address 0x{:08X}", addr);
                 self.program_counter = addr;
-            }
+            },
             OpCode::RTRN_POP => {
                 let addr = self.pop_u32_from_ram(&memory);
+                info!(core=?self.index, "Returning to address 0x{:08X}", addr);
                 self.program_counter = addr;
+            },
+            OpCode::ORR => {
+                let rde = (instruction >> 20) & 0x1F;
+                let rs1 = (instruction >> 15) & 0x1F;
+                let rs2 = (instruction >> 10) & 0x1F;
+                info!("OR-ing register {} and register {}, storing in register {}", rs1, rs2, rde);
+                self.registers[rde as usize] = self.registers[rs1 as usize] | self.registers[rs2 as usize];
+            },
+            OpCode::ORI => {
+                let rde = (instruction >> 20) & 0x1F;
+                let value = instruction & 0xFFFFF;
+                info!("OR-ing register {} with immediate value {}, storing in register {}", rde, value, rde);
+                self.registers[rde as usize] = self.registers[rde as usize] | value;
+            },
+            OpCode::XOR => {
+                let rde = (instruction >> 20) & 0x1F;
+                let rs1 = (instruction >> 15) & 0x1F;
+                let rs2 = (instruction >> 10) & 0x1F;
+                info!("XOR-ing register {} and register {}, storing in register {}", rs1, rs2, rde);
+                info!("{:032b} ^ {:032b} => {:032b}", self.registers[rs1 as usize], self.registers[rs2 as usize], self.registers[rs1 as usize] ^ self.registers[rs2 as usize]);
+                self.registers[rde as usize] = self.registers[rs1 as usize] ^ self.registers[rs2 as usize];
+            },
+            OpCode::AND => {
+                let rde = (instruction >> 20) & 0x1F;
+                let rs1 = (instruction >> 15) & 0x1F;
+                let rs2 = (instruction >> 10) & 0x1F;
+                info!("AND-ing register {} and register {}, storing in register {}", rs1, rs2, rde);
+                self.registers[rde as usize] = self.registers[rs1 as usize] & self.registers[rs2 as usize];
+            },
+            OpCode::ADD => {
+                let rde = (instruction >> 20) & 0x1F;
+                let rs1 = (instruction >> 15) & 0x1F;
+                let rs2 = (instruction >> 10) & 0x1F;
+                info!("Adding register {} and register {}, storing in register {}", rs1, rs2, rde);
+                let value = (self.registers[rs1 as usize] as u64) + (self.registers[rs2 as usize] as u64);
+                if value > u32::MAX.into() {
+                    self.registers[rde as usize] = (value >> 1) as u32;
+                    return Err(CpuError::new(self.program_counter, self.stack_pointer, self.registers, CpuErrorType::AddWithOverflow, self.index))
+                } else {
+                    self.registers[rde as usize] = value as u32;
+                }
+
             }
             OpCode::NOOP => {
-            }
+            },
             OpCode::RSET_SOFT => self.reset_soft(memory),
             OpCode::RSET_HARD => self.reset_hard(memory),
             OpCode::HALT => {
@@ -355,7 +443,6 @@ impl<'a> Core {
             OpCode::IRPT_SEND => {
                 let target_idx = (instruction >> 20) & 0x1F;
                 let itype_val = (instruction >> 15) & 0x1F;
-                let payload = instruction & 0x7FFF;
 
                 if let Some(target_sender) = self.senders.get(target_idx as usize) {
                     let msg = Interrupt {
@@ -365,9 +452,8 @@ impl<'a> Core {
                             2 => InterruptType::Halt,
                             3 => InterruptType::SoftReset,
                             4 => InterruptType::HardReset,
-                            _ => InterruptType::Software(itype_val),
+                            _ => panic!("Unknown Interrupt: {}", itype_val)
                         },
-                        data: Some(payload),
                     };
                     info!("Core {} sent {} to Core {}", self.index, msg, target_idx);
                     let _ = target_sender.send(msg);
@@ -440,6 +526,7 @@ pub enum CpuErrorType {
     Halt,
     DivisionByZero,
     StackOpOutOfBounds,
+    AddWithOverflow,
 }
 
 pub trait Severity {
@@ -455,16 +542,16 @@ impl Severity for CpuErrorType {
             CpuErrorType::Halt => CpuErrorSeverity::Severe,
             CpuErrorType::DivisionByZero => CpuErrorSeverity::Minor,
             CpuErrorType::StackOpOutOfBounds => CpuErrorSeverity::Minor,
+            CpuErrorType::AddWithOverflow => CpuErrorSeverity::Minor,
         }
     }
 }
 
 #[derive(Debug, Display)]
-#[display("Interrupt {:?} {}", interrupt_type, if data.is_some() {format!("with data {}", data.unwrap())} else {"".to_string()})]
+#[display("Interrupt {:?}", interrupt_type)]
 pub struct Interrupt {
     sender_id: u32,
     interrupt_type: InterruptType,
-    data: Option<u32>
 }
 
 #[derive(Debug, Display)]
@@ -473,5 +560,4 @@ pub enum InterruptType {
     Halt,
     SoftReset,
     HardReset,
-    Software(u32)
 }
