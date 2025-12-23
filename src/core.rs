@@ -237,35 +237,34 @@ impl Core {
                 let rde = (instruction >> 20) & 0x1F;
                 let rs1 = (instruction >> 15) & 0x1F;
                 let rs2 = (instruction >> 10) & 0x1F;
-                info!("OR-ing register {} and register {}, storing in register {}", rs1, rs2, rde);
+                info!(core=?self.index, "OR-ing register {} and register {}, storing in register {}", rs1, rs2, rde);
                 self.registers[rde as usize] = self.registers[rs1 as usize] | self.registers[rs2 as usize];
             },
             OpCode::ORI => {
                 let rde = (instruction >> 20) & 0x1F;
                 let value = instruction & 0xFFFFF;
-                info!("OR-ing register {} with immediate value {}, storing in register {}", rde, value, rde);
+                info!(core=?self.index, "OR-ing register {} with immediate value {}, storing in register {}", rde, value, rde);
                 self.registers[rde as usize] = self.registers[rde as usize] | value;
             },
             OpCode::XOR => {
                 let rde = (instruction >> 20) & 0x1F;
                 let rs1 = (instruction >> 15) & 0x1F;
                 let rs2 = (instruction >> 10) & 0x1F;
-                info!("XOR-ing register {} and register {}, storing in register {}", rs1, rs2, rde);
-                info!("{:032b} ^ {:032b} => {:032b}", self.registers[rs1 as usize], self.registers[rs2 as usize], self.registers[rs1 as usize] ^ self.registers[rs2 as usize]);
+                info!(core=?self.index, "XOR-ing register {} and register {}, storing in register {}", rs1, rs2, rde);
                 self.registers[rde as usize] = self.registers[rs1 as usize] ^ self.registers[rs2 as usize];
             },
             OpCode::AND => {
                 let rde = (instruction >> 20) & 0x1F;
                 let rs1 = (instruction >> 15) & 0x1F;
                 let rs2 = (instruction >> 10) & 0x1F;
-                info!("AND-ing register {} and register {}, storing in register {}", rs1, rs2, rde);
+                info!(core=?self.index, "AND-ing register {} and register {}, storing in register {}", rs1, rs2, rde);
                 self.registers[rde as usize] = self.registers[rs1 as usize] & self.registers[rs2 as usize];
             },
             OpCode::ADD => {
                 let rde = (instruction >> 20) & 0x1F;
                 let rs1 = (instruction >> 15) & 0x1F;
                 let rs2 = (instruction >> 10) & 0x1F;
-                info!("Adding register {} and register {}, storing in register {}", rs1, rs2, rde);
+                info!(core=?self.index, "Adding register {} and register {}, storing in register {}", rs1, rs2, rde);
                 let value = (self.registers[rs1 as usize] as u64) + (self.registers[rs2 as usize] as u64);
                 if value > u32::MAX.into() {
                     self.registers[rde as usize] = (value >> 1) as u32;
@@ -279,7 +278,7 @@ impl Core {
                 let rde = (instruction >> 20) & 0x1F;
                 let rs1 = (instruction >> 15) & 0x1F;
                 let rs2 = (instruction >> 10) & 0x1F;
-                info!("Subtracting register {} from register {}, storing in register {}", rs2, rs1, rde);
+                info!(core=?self.index, "Subtracting register {} from register {}, storing in register {}", rs2, rs1, rde);
                 if self.registers[rs1 as usize] >= self.registers[rs2 as usize] {
                     self.registers[rde as usize] = self.registers[rs1 as usize] - self.registers[rs2 as usize];
                 } else {
@@ -314,7 +313,7 @@ impl Core {
                             _ => panic!("Unknown Interrupt: {}", itype_val)
                         },
                     };
-                    info!("Core {} sent {} to Core {}", self.index, msg, target_idx);
+                    info!(core=?self.index, "Sent {} to Core {}", msg, target_idx);
                     let _ = target_sender.send(msg);
                 }
             },

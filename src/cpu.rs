@@ -99,6 +99,7 @@ impl CPU {
         for core in self.cores.iter_mut() {
             let mut core = core.take().unwrap();
             let memory = std::sync::Arc::clone(&self.memory);
+            let cpu_mode = self.mode.clone();
             let tx = self.channel.0.clone();
 
             let handle = std::thread::Builder::new()
@@ -123,16 +124,18 @@ impl CPU {
 
                         if let Err(e) = result {
                             error!(core=core.index, "Core {} error: {}", core.index, e);
-                            let error_severity = e.severity();
                             tx.send(e).unwrap();
-                            if error_severity == CpuErrorSeverity::Minor {
-                                loop {
-                                    let mut input = [0u8; 1];
-                                    std::io::stdin().read_exact(&mut input).unwrap();
-                                    if input[0] == b'\n' {
-                                        break;
+                            match cpu_mode {
+                                CpuMode::Debug => {
+                                    loop {
+                                        let mut input = [0u8; 1];
+                                        std::io::stdin().read_exact(&mut input).unwrap();
+                                        if input[0] == b'\n' {
+                                            break;
+                                        }
                                     }
-                                }
+                                },
+                                _ => {}
                             }
                         }
                     }
@@ -153,7 +156,7 @@ impl CPU {
     }
 }
 
-#[derive(Debug, Display)]
+#[derive(Debug, Display, Clone)]
 /// Determines how the VM handles runtime Errors
 pub enum CpuMode {
     /// Makes the VM crash gracefully when any runtime error occurs.
