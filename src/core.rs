@@ -14,7 +14,7 @@ pub struct Core {
     pub senders: [std::sync::mpsc::Sender<Interrupt>; 4],
 }
 
-impl<'a> Core {
+impl Core {
     pub fn new(
         index: u32,
         senders: [std::sync::mpsc::Sender<Interrupt>; 4],
