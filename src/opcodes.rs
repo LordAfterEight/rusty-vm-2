@@ -15,7 +15,7 @@ pub enum OpCode {
     LDUP_IMM = 0x02,
 
     /// OP(7) - RS1(5) - IMM(20)
-    /// Writes the value of the specified register to the immediate 20-bit address
+    /// Writes the value of register RS1 to the immediate 20-bit address
     STOR_IMM = 0x03,
 
     /// OP(7) - RDE(5) - RS1(5) - xxx
@@ -31,7 +31,7 @@ pub enum OpCode {
     JUMP_IMM = 0x10,
 
     /// OP(7) - RS1(5) - xxx
-    /// Unconditionally jumps to the address stored in the specified register RS1
+    /// Unconditionally jumps to the address stored in register RS1
     JUMP_REG = 0x11,
 
     /// OP(7) - IMM(25)
@@ -39,20 +39,16 @@ pub enum OpCode {
     BRAN_IMM = 0x12,
 
     /// OP(7) - RS1(5) - xxx
-    /// Unconditionally branches to the address stored in the specified register RS1
+    /// Unconditionally branches to the address stored in register RS1
     BRAN_REG = 0x13,
 
     /// OP(7) - RDE(5) - RS1(5) - RS2(5) - xxx
+    /// Adds the contents of registers RS1 and RS2 and stores the result in register RS2
     ADD = 0x20,
 
     /// OP(7) - RDE(5) - RS1(5) - RS2(5) - xxx
+    /// Subtracts the contents of registers RS1 and RS2 and stores the result in register RS2
     SUB = 0x21,
-
-    /// OP(7) - RDE(5) - RS1(5) - RS2(5) - xxx
-    MUL = 0x22,
-
-    /// OP(7) - RDE(5) - RS1(5) - RS2(5) - xxx
-    DIV = 0x23,
 
     /// OP(7) - RDE(5) - RS1(5) - RS2(5) - xxx
     AND = 0x24,

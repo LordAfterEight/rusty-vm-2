@@ -206,6 +206,7 @@ pub enum CpuErrorType {
     DivisionByZero,
     StackOpOutOfBounds,
     AddWithOverflow,
+    SubWithOverflow,
 }
 
 pub trait Severity {
@@ -222,6 +223,7 @@ impl Severity for CpuErrorType {
             CpuErrorType::DivisionByZero => CpuErrorSeverity::Minor,
             CpuErrorType::StackOpOutOfBounds => CpuErrorSeverity::Minor,
             CpuErrorType::AddWithOverflow => CpuErrorSeverity::Minor,
+            CpuErrorType::SubWithOverflow => CpuErrorSeverity::Minor,
         }
     }
 }

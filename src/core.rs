@@ -274,7 +274,18 @@ impl Core {
                     self.registers[rde as usize] = value as u32;
                 }
 
-            }
+            },
+            OpCode::SUB => {
+                let rde = (instruction >> 20) & 0x1F;
+                let rs1 = (instruction >> 15) & 0x1F;
+                let rs2 = (instruction >> 10) & 0x1F;
+                info!("Subtracting register {} from register {}, storing in register {}", rs2, rs1, rde);
+                if self.registers[rs1 as usize] >= self.registers[rs2 as usize] {
+                    self.registers[rde as usize] = self.registers[rs1 as usize] - self.registers[rs2 as usize];
+                } else {
+                    return Err(CpuError::new(self.program_counter, self.stack_pointer, self.registers, CpuErrorType::SubWithOverflow, self.index))
+                }
+            },
             OpCode::NOOP => {
             },
             OpCode::RSET_SOFT => self.reset_soft(memory),
