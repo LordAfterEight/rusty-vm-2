@@ -53,6 +53,7 @@ fn main() {
     */
 
     memory.data[0x0]  = 0x88;
+
     memory.data[0x8B] = (OpCode::LDUP_IMM as u8) << 1;
     memory.data[0x8A] = 0b00011111;
     memory.data[0x89] = 0b11111111;
@@ -61,7 +62,7 @@ fn main() {
     memory.data[0x8F] = (OpCode::ORI as u8) << 1;
     memory.data[0x8E] = 0b00011000;
     memory.data[0x8D] = 0b00001111;
-    memory.data[0x8C] = 0b11111110;
+    memory.data[0x8C] = 0b11111111;
 
     memory.data[0x93] = (OpCode::LDUP_IMM as u8) << 1;
     memory.data[0x92] = 0b00101111;
@@ -73,10 +74,8 @@ fn main() {
     memory.data[0x95] = 0b00001111;
     memory.data[0x94] = 0b11111111;
 
-    memory.data[0x9B] = (OpCode::SUB as u8) << 1;
-    memory.data[0x9A] = 0b00010000;
-    memory.data[0x99] = 0b10001000;
-    memory.data[0x98] = 0b00000000;
+    memory.data[0x9B] = ((OpCode::BRAN_REL as u8) << 1) | 0b0;
+    memory.data[0x9A] = 0b10000000;
 
     let mem = std::sync::Arc::new(std::sync::Mutex::new(memory));
 

@@ -201,10 +201,12 @@ pub enum CpuErrorSeverity {
 #[derive(Debug, Display, PartialEq)]
 pub enum CpuErrorType {
     StackOverflow,
-    #[display("Invalid instruction: {:#010X}", _0)]
+    #[display("Invalid instruction: {:#08X}", _0)]
     InvalidInstruction(u32),
     #[display("Unimplemented OpCode: {:#?}", _0)]
     UnimplementedOpCode(OpCode),
+    #[display("Invalid OpCode: {}", _0)]
+    InvalidOpCode(u32),
     Halt,
     DivisionByZero,
     StackOpOutOfBounds,
@@ -222,6 +224,7 @@ impl Severity for CpuErrorType {
             CpuErrorType::StackOverflow => CpuErrorSeverity::Severe,
             CpuErrorType::InvalidInstruction(_) => CpuErrorSeverity::Severe,
             CpuErrorType::UnimplementedOpCode(_) => CpuErrorSeverity::Severe,
+            CpuErrorType::InvalidOpCode(_) => CpuErrorSeverity::Severe,
             CpuErrorType::Halt => CpuErrorSeverity::Severe,
             CpuErrorType::DivisionByZero => CpuErrorSeverity::Minor,
             CpuErrorType::StackOpOutOfBounds => CpuErrorSeverity::Minor,
