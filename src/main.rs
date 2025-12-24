@@ -77,7 +77,7 @@ fn main() {
     memory.data[0x9B] = ((OpCode::BRAN_REL as u8) << 1) | 0b0;
     memory.data[0x9A] = 0b10000000;
 
-    let mem = std::sync::Arc::new(std::sync::Mutex::new(memory));
+    let mem = std::sync::Arc::new(std::sync::RwLock::new(memory));
 
     let mut cpu = cpu::CPU::new(cpu::CpuMode::Debug, std::sync::Arc::clone(&mem));
     info!("Started VM in {} mode", format!("{}", cpu.mode));

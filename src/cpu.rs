@@ -17,7 +17,7 @@ use crate::opcodes::OpCode;
 #[derive(Debug)]
 pub struct CPU {
     pub mode: CpuMode,
-    pub memory: std::sync::Arc<std::sync::Mutex<crate::memory::Memory>>,
+    pub memory: std::sync::Arc<std::sync::RwLock<crate::memory::Memory>>,
     pub cores: [Option<crate::core::Core>; 4],
     pub channel: (
         std::sync::mpsc::Sender<CpuError>,
@@ -28,7 +28,7 @@ pub struct CPU {
 impl CPU {
     pub fn new(
         mode: CpuMode,
-        memory: std::sync::Arc<std::sync::Mutex<crate::memory::Memory>>,
+        memory: std::sync::Arc<std::sync::RwLock<crate::memory::Memory>>,
     ) -> Self {
         let mut tx_rx_pairs: Vec<_> = (0..4).map(|_| std::sync::mpsc::channel()).collect();
 
