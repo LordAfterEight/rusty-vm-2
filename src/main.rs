@@ -30,10 +30,10 @@ fn main() {
     let log_file_path = args.log_file.unwrap_or_else(|| "log.json".to_string());
     let log_file = std::fs::File::create(log_file_path).unwrap();
     let (non_blocking,_guard) = tracing_appender::non_blocking(log_file);
-    let json_layer = fmt::layer().json().with_writer(non_blocking).with_filter(filter);
+    //let json_layer = fmt::layer().json().with_writer(non_blocking).with_filter(filter);
     tracing_subscriber::registry()
         .with(stdout_layer)
-        .with(json_layer)
+        //.with(json_layer)
         .init();
 
     let mut memory = memory::Memory::empty();
