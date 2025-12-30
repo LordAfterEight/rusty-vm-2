@@ -2,20 +2,20 @@ use std::io::Read;
 
 #[derive(Debug)]
 pub struct Memory {
-    pub data: Box<[u8]>,
+    pub data: memmap2::MmapMut,
 }
 
 impl Memory {
-    pub fn empty() -> Self {
-        info!("Allocating 4GiB of VM storage to system RAM...");
-        let memory = vec![0u8; 0x1_0000_0000].into_boxed_slice();
+    pub fn empty(size: usize) -> Self {
+        info!("Allocating {} bytes of empty VM address space to system RAM...", size);
+        let memory = memmap2::MmapOptions::new().len(size).map_anon().unwrap();
         Self {
             data: memory,
         }
     }
-    pub fn from_file(path: &str) -> Self {
-        info!("Allocating 4GiB of VM storage to system RAM...");
-        let mut memory = vec![0u8; 0x1_0000_0000].into_boxed_slice();
+    pub fn from_file(path: &str, size: usize) -> Self {
+        info!("Allocating {} bytes of VM address space to system RAM...", size);
+        let mut memory = memmap2::MmapOptions::new().len(size).map_anon().unwrap();
         info!("Loading ROM...");
         let rom_data = Memory::get_data_from_file(path);
         memory[0..rom_data.len()].copy_from_slice(rom_data.as_slice());

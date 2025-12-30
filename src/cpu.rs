@@ -42,7 +42,10 @@ impl CPU {
         let cores = std::array::from_fn(|i| {
             let (_own_tx, own_rx) = tx_rx_pairs.remove(0);
             let mut core = crate::core::Core::new(i as u32, all_senders.clone(), own_rx, &memory);
-            if i == 0 { core.busy = true; info!("Assigned busy to core {}", i)}
+            if i == 0 {
+                core.busy = true;
+                info!("Assigned busy to core {}", i)
+            }
             Some(core)
         });
 
@@ -118,21 +121,17 @@ impl CPU {
                             continue;
                         }
 
-                        let result = {
-                            core.tick(&memory)
-                        };
+                        let result = { core.tick(&memory) };
 
                         if let Err(e) = result {
-                            error!(core=core.index, "Core {} error: {}", core.index, e);
+                            error!(core = core.index, "Core {} error: {}", core.index, e);
                             tx.send(e).unwrap();
                             match cpu_mode {
-                                CpuMode::Debug => {
-                                    loop {
-                                        let mut input = [0u8; 1];
-                                        std::io::stdin().read_exact(&mut input).unwrap();
-                                        if input[0] == b'\n' {
-                                            break;
-                                        }
+                                CpuMode::Debug => loop {
+                                    let mut input = [0u8; 1];
+                                    std::io::stdin().read_exact(&mut input).unwrap();
+                                    if input[0] == b'\n' {
+                                        break;
                                     }
                                 },
                                 _ => {}
@@ -181,7 +180,13 @@ pub struct CpuError {
 }
 
 impl CpuError {
-    pub fn new(program_counter: u32, stack_pointer: u32, register_snapshot: [u32; 32], error_type: CpuErrorType, core_index: u32) -> Self {
+    pub fn new(
+        program_counter: u32,
+        stack_pointer: u32,
+        register_snapshot: [u32; 32],
+        error_type: CpuErrorType,
+        core_index: u32,
+    ) -> Self {
         Self {
             error_type,
             program_counter,
