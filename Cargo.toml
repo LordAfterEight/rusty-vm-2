@@ -7,8 +7,8 @@ edition = "2024"
 clap = { version = "4.5.53", features = ["derive"] }
 clearscreen = "4.0.2"
 derive_more = { version = "2.1.0", features = ["full"] }
-macroquad = "0.4.14"
 memmap2 = "0.9.9"
+minifb = "0.28.0"
 num_enum = "0.7.5"
 rand = "0.9.2"
 tracing = "0.1.44"

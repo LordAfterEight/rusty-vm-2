@@ -427,7 +427,7 @@ impl Core {
                 ));
             }
         }
-        std::thread::sleep(std::time::Duration::from_millis(500));
+        //std::thread::sleep(std::time::Duration::from_millis(500));
         Ok(())
     }
 }

@@ -5,7 +5,6 @@ pub struct VM {
 impl VM {
     pub fn new() -> Self {
         let bus = crate::mmio::Bus::new_empty(0x1_0000_0000);
-
         {
             let mut memory = bus.ram.write().unwrap();
 
@@ -70,11 +69,28 @@ impl VM {
             .unwrap();
         handles.push(cpu_handle);
 
+        let mut gpu = crate::gpu::GPU::init();
         let gpu_handle = std::thread::Builder::new()
             .name("Rusty-VM-GPU".to_string())
             .spawn(move || {
                 info!("Starting GPU...");
-                crate::gpu::main();
+                let mut window = minifb::Window::new(
+                    "RustyVM - 2",
+                    (1920.0 * 0.75) as usize,
+                    (1080.0 * 0.75) as usize,
+                    minifb::WindowOptions {
+                        resize: false,
+                        scale: minifb::Scale::X1,
+                        scale_mode: minifb::ScaleMode::Stretch,
+                        ..Default::default()
+                    }
+                ).unwrap();
+                window.set_target_fps(60);
+                while window.is_open() && !window.is_key_down(minifb::Key::Escape) {
+                    window.update_with_buffer(gpu.frame_buffer.as_slice(), 1920, 1080)
+                        .unwrap();
+                    gpu.update().unwrap()
+                }
             })
             .unwrap();
         handles.push(gpu_handle);
