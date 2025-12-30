@@ -14,10 +14,9 @@ use crate::opcodes::OpCode;
 ///
 /// `xxxxxxx xxxxx xxxxx xxxxx`
 ///  OpCode   rd1   rs1   rs2
-#[derive(Debug)]
 pub struct CPU {
     pub mode: CpuMode,
-    pub memory: std::sync::Arc<std::sync::RwLock<crate::memory::Memory>>,
+    pub memory: std::sync::Arc<crate::mmio::Bus>,
     pub cores: [Option<crate::core::Core>; 4],
     pub channel: (
         std::sync::mpsc::Sender<CpuError>,
@@ -28,7 +27,7 @@ pub struct CPU {
 impl CPU {
     pub fn new(
         mode: CpuMode,
-        memory: std::sync::Arc<std::sync::RwLock<crate::memory::Memory>>,
+        memory: crate::mmio::Bus,
     ) -> Self {
         let mut tx_rx_pairs: Vec<_> = (0..4).map(|_| std::sync::mpsc::channel()).collect();
 
@@ -41,7 +40,7 @@ impl CPU {
 
         let cores = std::array::from_fn(|i| {
             let (_own_tx, own_rx) = tx_rx_pairs.remove(0);
-            let mut core = crate::core::Core::new(i as u32, all_senders.clone(), own_rx, &memory);
+            let mut core = crate::core::Core::new(i as u32, all_senders.clone(), own_rx, memory.clone());
             if i == 0 {
                 core.busy = true;
                 info!("Assigned busy to core {}", i)
@@ -51,7 +50,7 @@ impl CPU {
 
         Self {
             mode,
-            memory,
+            memory: std::sync::Arc::new(memory),
             cores,
             channel: std::sync::mpsc::channel::<CpuError>(),
         }
@@ -111,17 +110,17 @@ impl CPU {
                     info!("Spawned thread: {}", std::thread::current().name().unwrap());
                     loop {
                         if let Ok(interrupt) = core.receiver.try_recv() {
-                            core.handle_interrupts(interrupt, &memory);
+                            core.handle_interrupts(interrupt);
                         }
 
                         if !core.busy {
                             if let Ok(interrupt) = core.receiver.recv() {
-                                core.handle_interrupts(interrupt, &memory);
+                                core.handle_interrupts(interrupt);
                             }
                             continue;
                         }
 
-                        let result = { core.tick(&memory) };
+                        let result = { core.tick() };
 
                         if let Err(e) = result {
                             error!(core = core.index, "Core {} error: {}", core.index, e);

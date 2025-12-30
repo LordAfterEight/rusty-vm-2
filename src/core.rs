@@ -1,7 +1,7 @@
 use crate::OpCode;
 use crate::cpu::{CpuError, CpuErrorType, Interrupt, InterruptType};
+use crate::mmio::AddressSpace;
 
-#[derive(Debug)]
 pub struct Core {
     pub program_counter: u32,
     pub stack_pointer: u32,
@@ -12,6 +12,7 @@ pub struct Core {
     pub halted: bool,
     pub receiver: std::sync::mpsc::Receiver<Interrupt>,
     pub senders: [std::sync::mpsc::Sender<Interrupt>; 4],
+    pub bus: std::sync::Arc<std::sync::RwLock<crate::mmio::Bus>>
 }
 
 impl Core {
@@ -19,7 +20,7 @@ impl Core {
         index: u32,
         senders: [std::sync::mpsc::Sender<Interrupt>; 4],
         receiver: std::sync::mpsc::Receiver<Interrupt>,
-        memory: &std::sync::Arc<std::sync::RwLock<crate::memory::Memory>>,
+        memory: crate::mmio::Bus,
     ) -> Self {
         info!("Created Core with index {index}");
         let mut core = Self {
@@ -32,20 +33,21 @@ impl Core {
             halted: false,
             senders,
             receiver,
+            bus: std::sync::Arc::new(std::sync::RwLock::new(memory))
         };
-        core.reset_hard(memory);
+        core.reset_hard();
         return core;
     }
 
-    fn reset_soft(&mut self, memory: &std::sync::Arc<std::sync::RwLock<crate::memory::Memory>>) {
+    fn reset_soft(&mut self) {
         self.program_counter = 0x0 + self.index * 4;
-        let new_addr = self.fetch_u32(memory);
+        let new_addr = self.fetch_u32();
         self.program_counter = new_addr;
         self.stack_pointer = 0x4000_0000;
     }
 
-    fn reset_hard(&mut self, memory: &std::sync::Arc<std::sync::RwLock<crate::memory::Memory>>) {
-        self.reset_soft(memory);
+    fn reset_hard(&mut self) {
+        self.reset_soft();
         for register in self.registers.iter_mut() {
             *register = 0;
         }
@@ -79,30 +81,27 @@ impl Core {
     }
 
     fn write_byte(
-        &self,
-        memory: &std::sync::Arc<std::sync::RwLock<crate::memory::Memory>>,
+        &mut self,
         address: u32,
         value: u8,
     ) {
-        memory.write().unwrap().data[address as usize] = value;
+        self.bus.write().unwrap().write(address, value);
     }
 
     fn read_byte(
         &self,
-        memory: &std::sync::Arc<std::sync::RwLock<crate::memory::Memory>>,
         address: u32,
     ) -> u8 {
-        memory.read().unwrap().data[address as usize]
+        self.bus.read().unwrap().read(address)
     }
 
     fn write_u32_to_ram(
         &mut self,
-        memory: &std::sync::Arc<std::sync::RwLock<crate::memory::Memory>>,
         value: u32,
     ) {
         let value = value.to_le_bytes();
         for i in 0..4 {
-            self.write_byte(memory, self.stack_pointer, value[i]);
+            self.write_byte(self.stack_pointer, value[i]);
             self.advance_sp();
         }
         info!(
@@ -115,12 +114,11 @@ impl Core {
 
     fn read_u32_from_ram(
         &mut self,
-        memory: &std::sync::Arc<std::sync::RwLock<crate::memory::Memory>>,
     ) -> u32 {
         let mut value: [u8; 4] = [0; 4];
         for i in 0..4 {
             self.decrease_sp();
-            value[i] = self.read_byte(memory, self.stack_pointer);
+            value[i] = self.read_byte(self.stack_pointer);
         }
         info!(
             "Read u32 {:032b} from RAM at addresses 0x{:08X} - 0x{:08X}",
@@ -133,11 +131,10 @@ impl Core {
 
     fn pop_u32_from_ram(
         &mut self,
-        memory: &std::sync::Arc<std::sync::RwLock<crate::memory::Memory>>,
     ) -> u32 {
-        let value = self.read_u32_from_ram(memory);
+        let value = self.read_u32_from_ram();
         for _ in 0..4 {
-            memory.write().unwrap().data[self.stack_pointer as usize] = 0;
+            self.bus.write().unwrap().write(self.stack_pointer, 0);
         }
         info!(
             "Read u32 {:032b} from RAM at addresses 0x{:08X} - 0x{:08X}",
@@ -150,14 +147,12 @@ impl Core {
 
     fn fetch_u32(
         &mut self,
-        memory: &std::sync::Arc<std::sync::RwLock<crate::memory::Memory>>,
     ) -> u32 {
-        let mem = memory.read().unwrap();
         let instruction = u32::from_le_bytes([
-            mem.data[(self.program_counter + 0) as usize],
-            mem.data[(self.program_counter + 1) as usize],
-            mem.data[(self.program_counter + 2) as usize],
-            mem.data[(self.program_counter + 3) as usize],
+            self.bus.read().unwrap().read(self.program_counter + 0),
+            self.bus.read().unwrap().read(self.program_counter + 1),
+            self.bus.read().unwrap().read(self.program_counter + 2),
+            self.bus.read().unwrap().read(self.program_counter + 3),
         ]);
         self.program_counter += 4;
         return instruction
@@ -166,7 +161,6 @@ impl Core {
     pub fn handle_interrupts(
         &mut self,
         interrupt: Interrupt,
-        memory: &std::sync::Arc<std::sync::RwLock<crate::memory::Memory>>,
     ) {
         info!(
             core = self.index,
@@ -175,16 +169,15 @@ impl Core {
         match interrupt.interrupt_type {
             InterruptType::Halt => self.halted = false,
             InterruptType::Resume => self.halted = true,
-            InterruptType::SoftReset => self.reset_soft(&memory),
-            InterruptType::HardReset => self.reset_hard(&memory),
+            InterruptType::SoftReset => self.reset_soft(),
+            InterruptType::HardReset => self.reset_hard(),
         }
     }
 
     pub fn tick(
         &mut self,
-        memory: &std::sync::Arc<std::sync::RwLock<crate::memory::Memory>>,
     ) -> Result<(), CpuError> {
-        let instruction = self.fetch_u32(&memory);
+        let instruction = self.fetch_u32();
         let opcode_val = (instruction >> 25) & 0x7F;
         let opcode: OpCode = match TryFrom::try_from(opcode_val) {
             Ok(val) => val,
@@ -221,7 +214,7 @@ impl Core {
             OpCode::LOAD_BYTE => {
                 let rde = (instruction >> 20) & 0x1F;
                 let addr = (instruction >> 15) & 0x1F;
-                let value = self.read_byte(memory, addr);
+                let value = self.read_byte(addr);
                 self.registers[rde as usize] = value as u32;
                 info!(core=?self.index, "Read value {} from 0x{:08X}", value, addr);
             }
@@ -229,7 +222,7 @@ impl Core {
                 let addr = (instruction >> 20) & 0x1F;
                 let value = self.registers[((instruction >> 15) & 0x1F) as usize];
                 info!(core=?self.index, "Writing value {} to 0x{:08X}", value, addr);
-                self.write_byte(memory, addr, value as u8);
+                self.write_byte(addr, value as u8);
             }
             OpCode::JUMP_IMM => {
                 let addr = (instruction >> 20) & 0x1FFFFFF;
@@ -242,13 +235,13 @@ impl Core {
                 self.program_counter = self.registers[rs1 as usize];
             }
             OpCode::BRAN_IMM => {
-                self.write_u32_to_ram(&memory, self.program_counter);
+                self.write_u32_to_ram(self.program_counter);
                 let addr = instruction & 0x1FFFFFF;
                 info!(core=?self.index, "Branching to address 0x{:08X}", addr);
                 self.program_counter = addr;
             }
             OpCode::BRAN_REG => {
-                self.write_u32_to_ram(&memory, self.program_counter);
+                self.write_u32_to_ram(self.program_counter);
                 let rs1 = (instruction >> 20) & 0x1F;
                 info!(core=?self.index, "branching to address 0x{:08X}", self.registers[rs1 as usize]);
                 self.program_counter = self.registers[rs1 as usize];
@@ -270,7 +263,7 @@ impl Core {
                 info!(core=?self.index, "Comparing register {} ({}) with register {} ({})...", rs1, self.registers[rs1 as usize], rs2, self.registers[rs2 as usize]);
                 if self.registers[rs1 as usize] ^ self.registers[rs2 as usize] == 0 {
                     info!(core=?self.index, "Branching to address 0x{:08X}", self.registers[rs3 as usize]);
-                    self.write_u32_to_ram(&memory, self.program_counter);
+                    self.write_u32_to_ram(self.program_counter);
                     self.program_counter = self.registers[rs3 as usize];
                 }
             }
@@ -297,7 +290,7 @@ impl Core {
             OpCode::BRAN_REL => {
                 let sign = (instruction >> 24) & 0x1;
                 let val = instruction & 0xFFFFFF;
-                self.write_u32_to_ram(&memory, self.program_counter);
+                self.write_u32_to_ram(self.program_counter);
                 match sign {
                     1 => {
                         info!(core=?self.index, "Increasing program counter by {}", val);
@@ -316,12 +309,12 @@ impl Core {
                 }
             }
             OpCode::RTRN => {
-                let addr = self.read_u32_from_ram(&memory);
+                let addr = self.read_u32_from_ram();
                 info!(core=?self.index, "Returning to address 0x{:08X}", addr);
                 self.program_counter = addr;
             }
             OpCode::RTRN_POP => {
-                let addr = self.pop_u32_from_ram(&memory);
+                let addr = self.pop_u32_from_ram();
                 info!(core=?self.index, "Returning to address 0x{:08X}", addr);
                 self.program_counter = addr;
             }
@@ -394,8 +387,8 @@ impl Core {
                 }
             }
             OpCode::NOOP => {}
-            OpCode::RSET_SOFT => self.reset_soft(memory),
-            OpCode::RSET_HARD => self.reset_hard(memory),
+            OpCode::RSET_SOFT => self.reset_soft(),
+            OpCode::RSET_HARD => self.reset_hard(),
             OpCode::HALT => {
                 return Err(CpuError::new(
                     self.program_counter,

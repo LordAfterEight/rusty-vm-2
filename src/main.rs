@@ -16,6 +16,7 @@ mod vm;
 mod cpu;
 mod gpu;
 mod core;
+mod mmio;
 mod memory;
 mod opcodes;
 

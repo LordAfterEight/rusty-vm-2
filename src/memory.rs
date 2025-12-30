@@ -35,3 +35,12 @@ impl Memory {
         return rom
     }
 }
+
+impl crate::mmio::AddressSpace for Memory {
+    fn read(&self, addr: u32) -> u8 {
+        self.data[addr as usize]
+    }
+    fn write(&mut self, addr: u32, value: u8) {
+        self.data[addr as usize] = value;
+    }
+}
