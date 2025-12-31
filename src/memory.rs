@@ -37,10 +37,13 @@ impl Memory {
 }
 
 impl crate::mmio::AddressSpace for Memory {
-    fn read(&self, addr: u32) -> u8 {
+    fn read8(&self, addr: u32) -> u8 {
         self.data[addr as usize]
     }
-    fn write(&mut self, addr: u32, value: u8) {
+    fn write8(&mut self, addr: u32, value: u8) {
         self.data[addr as usize] = value;
+    }
+    fn write32(&mut self, addr: u32, value: u32) {
+        panic!("Invalid operation")
     }
 }

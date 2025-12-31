@@ -12,7 +12,8 @@ pub struct Core {
     pub halted: bool,
     pub receiver: std::sync::mpsc::Receiver<Interrupt>,
     pub senders: [std::sync::mpsc::Sender<Interrupt>; 4],
-    pub bus: std::sync::Arc<std::sync::RwLock<crate::mmio::Bus>>
+    pub bus: std::sync::Arc<std::sync::RwLock<crate::mmio::Bus>>,
+    pub running: std::sync::Arc<std::sync::atomic::AtomicBool>
 }
 
 impl Core {
@@ -20,7 +21,8 @@ impl Core {
         index: u32,
         senders: [std::sync::mpsc::Sender<Interrupt>; 4],
         receiver: std::sync::mpsc::Receiver<Interrupt>,
-        memory: crate::mmio::Bus,
+        memory: std::sync::Arc<std::sync::RwLock<crate::mmio::Bus>>,
+        running: std::sync::Arc<std::sync::atomic::AtomicBool>
     ) -> Self {
         info!("Created Core with index {index}");
         let mut core = Self {
@@ -33,7 +35,8 @@ impl Core {
             halted: false,
             senders,
             receiver,
-            bus: std::sync::Arc::new(std::sync::RwLock::new(memory))
+            bus: memory,
+            running
         };
         core.reset_hard();
         return core;
@@ -85,14 +88,14 @@ impl Core {
         address: u32,
         value: u8,
     ) {
-        self.bus.write().unwrap().write(address, value);
+        self.bus.write().unwrap().write8(address, value);
     }
 
     fn read_byte(
         &self,
         address: u32,
     ) -> u8 {
-        self.bus.read().unwrap().read(address)
+        self.bus.read().unwrap().read8(address)
     }
 
     fn write_u32_to_ram(
@@ -134,7 +137,7 @@ impl Core {
     ) -> u32 {
         let value = self.read_u32_from_ram();
         for _ in 0..4 {
-            self.bus.write().unwrap().write(self.stack_pointer, 0);
+            self.bus.write().unwrap().write8(self.stack_pointer, 0);
         }
         info!(
             "Read u32 {:032b} from RAM at addresses 0x{:08X} - 0x{:08X}",
@@ -149,10 +152,10 @@ impl Core {
         &mut self,
     ) -> u32 {
         let instruction = u32::from_le_bytes([
-            self.bus.read().unwrap().read(self.program_counter + 0),
-            self.bus.read().unwrap().read(self.program_counter + 1),
-            self.bus.read().unwrap().read(self.program_counter + 2),
-            self.bus.read().unwrap().read(self.program_counter + 3),
+            self.bus.read().unwrap().read8(self.program_counter + 0),
+            self.bus.read().unwrap().read8(self.program_counter + 1),
+            self.bus.read().unwrap().read8(self.program_counter + 2),
+            self.bus.read().unwrap().read8(self.program_counter + 3),
         ]);
         self.program_counter += 4;
         return instruction
@@ -219,7 +222,7 @@ impl Core {
                 info!(core=?self.index, "Read value {} from 0x{:08X}", value, addr);
             }
             OpCode::STOR_BYTE => {
-                let addr = (instruction >> 20) & 0x1F;
+                let addr = self.registers[((instruction >> 20) & 0x1F) as usize];
                 let value = self.registers[((instruction >> 15) & 0x1F) as usize];
                 info!(core=?self.index, "Writing value {} to 0x{:08X}", value, addr);
                 self.write_byte(addr, value as u8);
@@ -427,7 +430,7 @@ impl Core {
                 ));
             }
         }
-        //std::thread::sleep(std::time::Duration::from_millis(500));
+        std::thread::sleep(std::time::Duration::from_millis(500));
         Ok(())
     }
 }

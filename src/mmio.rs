@@ -1,12 +1,21 @@
 pub trait AddressSpace {
-    fn read(&self, addr: u32) -> u8;
-    fn write(&mut self, addr: u32, value: u8);
+    fn read8(&self, addr: u32) -> u8;
+    fn write8(&mut self, addr: u32, value: u8);
+    fn write32(&mut self, addr: u32, value: u32);
+}
+
+#[derive(Clone)]
+pub struct MmioRegion {
+    pub name: String,
+    pub base: u32,
+    pub size: u32,
+    pub device: std::sync::Arc<std::sync::Mutex<dyn AddressSpace + Send>>
 }
 
 #[derive(Clone)]
 pub struct Bus {
     pub ram: std::sync::Arc<std::sync::RwLock<crate::memory::Memory>>,
-    pub regions: Vec<(u32, u32, std::sync::Arc<std::sync::Mutex<dyn AddressSpace + Send>>)> // base, size, device
+    pub regions: Vec<MmioRegion>
 }
 
 impl Bus {
@@ -19,20 +28,38 @@ impl Bus {
 }
 
 impl AddressSpace for Bus {
-    fn read(&self, addr: u32) -> u8 {
-        for (base, size, device) in &self.regions {
-            if addr >= *base && addr < *base + *size {
-                return device.lock().unwrap().read(addr - base);
+    fn read8(&self, addr: u32) -> u8 {
+        for device in &self.regions {
+            if addr >= device.base && addr < device.base + device.size {
+                info!("Reading from device {}", device.name);
+                return device.device.lock().unwrap().read8(addr - device.base);
             }
         }
-        self.ram.read().unwrap().read(addr)
+        self.ram.read().unwrap().read8(addr)
     }
-    fn write(&mut self, addr: u32, value: u8) {
-        for (base, size, device) in &self.regions {
-            if addr >= *base && addr < *base + *size {
-                device.lock().unwrap().write(addr - base, value);
+    fn write8(&mut self, addr: u32, value: u8) {
+        info!("Writing value {} to address {}", value, addr);
+        for device in &self.regions {
+            if addr >= device.base && addr < device.base + device.size {
+                info!("Forwarding to device {} at address {}...", device.name, addr);
+                device.device.lock().unwrap().write8(addr - device.base, value);
+                info!("Done");
+                return;
             }
         }
-        self.ram.write().unwrap().write(addr, value);
+        self.ram.write().unwrap().write8(addr, value);
+    }
+
+    fn write32(&mut self, addr: u32, value: u32) {
+        info!("Writing value {} to address {}", value, addr);
+        for device in &self.regions {
+            if addr >= device.base && addr < device.base + device.size {
+                info!("Forwarding to device {} at address {}...", device.name, addr);
+                device.device.lock().unwrap().write32(addr - device.base, value);
+                info!("Done");
+                return;
+            }
+        }
+        self.ram.write().unwrap().write32(addr, value);
     }
 }

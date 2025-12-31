@@ -16,7 +16,7 @@ use crate::opcodes::OpCode;
 ///  OpCode   rd1   rs1   rs2
 pub struct CPU {
     pub mode: CpuMode,
-    pub memory: std::sync::Arc<crate::mmio::Bus>,
+    pub memory: std::sync::Arc<std::sync::RwLock<crate::mmio::Bus>>,
     pub cores: [Option<crate::core::Core>; 4],
     pub channel: (
         std::sync::mpsc::Sender<CpuError>,
@@ -27,7 +27,8 @@ pub struct CPU {
 impl CPU {
     pub fn new(
         mode: CpuMode,
-        memory: crate::mmio::Bus,
+        memory: std::sync::Arc<std::sync::RwLock<crate::mmio::Bus>>,
+        running: std::sync::Arc<std::sync::atomic::AtomicBool>
     ) -> Self {
         let mut tx_rx_pairs: Vec<_> = (0..4).map(|_| std::sync::mpsc::channel()).collect();
 
@@ -40,7 +41,7 @@ impl CPU {
 
         let cores = std::array::from_fn(|i| {
             let (_own_tx, own_rx) = tx_rx_pairs.remove(0);
-            let mut core = crate::core::Core::new(i as u32, all_senders.clone(), own_rx, memory.clone());
+            let mut core = crate::core::Core::new(i as u32, all_senders.clone(), own_rx, memory.clone(), running.clone());
             if i == 0 {
                 core.busy = true;
                 info!("Assigned busy to core {}", i)
@@ -50,7 +51,7 @@ impl CPU {
 
         Self {
             mode,
-            memory: std::sync::Arc::new(memory),
+            memory: memory,
             cores,
             channel: std::sync::mpsc::channel::<CpuError>(),
         }
@@ -100,7 +101,6 @@ impl CPU {
 
         for core in self.cores.iter_mut() {
             let mut core = core.take().unwrap();
-            let memory = std::sync::Arc::clone(&self.memory);
             let cpu_mode = self.mode.clone();
             let tx = self.channel.0.clone();
 
@@ -108,19 +108,22 @@ impl CPU {
                 .name(format!("RustyVM-Core-{}", core.index))
                 .spawn(move || {
                     info!("Spawned thread: {}", std::thread::current().name().unwrap());
-                    loop {
+                    while core.running.load(std::sync::atomic::Ordering::Relaxed) {
                         if let Ok(interrupt) = core.receiver.try_recv() {
                             core.handle_interrupts(interrupt);
                         }
 
                         if !core.busy {
-                            if let Ok(interrupt) = core.receiver.recv() {
+                            if !core.running.load(std::sync::atomic::Ordering::Relaxed) {
+                                std::process::exit(0);
+                            }
+                            if let Ok(interrupt) = core.receiver.try_recv() {
                                 core.handle_interrupts(interrupt);
                             }
                             continue;
                         }
 
-                        let result = { core.tick() };
+                        let result = core.tick();
 
                         if let Err(e) = result {
                             error!(core = core.index, "Core {} error: {}", core.index, e);
