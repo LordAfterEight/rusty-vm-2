@@ -24,87 +24,87 @@ impl VM {
 
             */
 
-            memory.data[0x0] = 0x20;
+            memory.data[0x0] = 0x10;
 
             // Load update enable value into r3 (Can be any value above 0)
-            memory.data[0x23] = (crate::OpCode::LOAD_IMM as u8) << 1;
-            memory.data[0x22] = 0b00110000; // r3
-            memory.data[0x21] = 0b00000000;
-            memory.data[0x20] = 0b00000001; // 255
+            memory.data[0xF03] = (crate::OpCode::LOAD_IMM as u8) << 1;
+            memory.data[0xF02] = 0b00110000; // r3
+            memory.data[0xF01] = 0b00000000;
+            memory.data[0xF00] = 0b00000001; // 255
 
             // Load GPU update enable register address into r2
-            memory.data[0x27] = (crate::OpCode::LOAD_IMM as u8) << 1;
-            memory.data[0x26] = 0b00100000; // r2
-            memory.data[0x25] = 0b00010000; // |
-            memory.data[0x24] = 0b00000010; // --> GPU register 2 at 0x4098
+            memory.data[0xF07] = (crate::OpCode::LOAD_IMM as u8) << 1;
+            memory.data[0xF06] = 0b00100000; // r2
+            memory.data[0xF05] = 0b00010000; // |
+            memory.data[0xF04] = 0b00000010; // --> GPU register 2 at 0x4098
 
             // Store update enable value to update enable register of GPU
-            memory.data[0x2B] = (crate::OpCode::STOR_BYTE as u8) << 1;
-            memory.data[0x2A] = 0b00100001; // store to address in r2
-            memory.data[0x29] = 0b10000000; // value from r3
-            memory.data[0x28] = 0b00000000;
+            memory.data[0xF0B] = (crate::OpCode::STOR_BYTE as u8) << 1;
+            memory.data[0xF0A] = 0b00100001; // store to address in r2
+            memory.data[0xF09] = 0b10000000; // value from r3
+            memory.data[0xF08] = 0b00000000;
 
             // Load pixel color into r1
-            memory.data[0x2F] = (crate::OpCode::LOAD_IMM as u8) << 1;
-            memory.data[0x2E] = 0b00010000; // r1
-            memory.data[0x2D] = 0b00000000; // |
-            memory.data[0x2C] = 0b00000000; // --> Some color
+            memory.data[0xF0F] = (crate::OpCode::LOAD_IMM as u8) << 1;
+            memory.data[0xF0E] = 0b00010000; // r1
+            memory.data[0xF0D] = 0b00000000; // |
+            memory.data[0xF0C] = 0b00000000; // --> Some color
 
 
             // Load frame buffer pointer to r0
-            memory.data[0x33] = (crate::OpCode::LOAD_IMM as u8) << 1;
-            memory.data[0x32] = 0b00000000; // r0 (fb pointer)
-            memory.data[0x31] = 0b00000000;
-            memory.data[0x30] = 0b00000000; // 0
+            memory.data[0xF13] = (crate::OpCode::LOAD_IMM as u8) << 1;
+            memory.data[0xF12] = 0b00000000; // r0 (fb pointer)
+            memory.data[0xF11] = 0b00000000;
+            memory.data[0xF10] = 0b00000000; // 0
 
             // Load incrementer into r4
-            memory.data[0x37] = (crate::OpCode::LOAD_IMM as u8) << 1;
-            memory.data[0x36] = 0b01000000; // r4 (incrementer)
-            memory.data[0x35] = 0b00000000; //
-            memory.data[0x34] = 0b00000001; // 1
+            memory.data[0xF17] = (crate::OpCode::LOAD_IMM as u8) << 1;
+            memory.data[0xF16] = 0b01000000; // r4 (incrementer)
+            memory.data[0xF15] = 0b00000000; //
+            memory.data[0xF14] = 0b00000001; // 1
 
             // Load GPU frame buffer register address into r5
-            memory.data[0x3B] = (crate::OpCode::LOAD_IMM as u8) << 1;
-            memory.data[0x3A] = 0b01010000; // r5 (fb address)
-            memory.data[0x39] = 0b00010000; // |
-            memory.data[0x38] = 0b00000000; // --> GPU register 0 at 0x4096
+            memory.data[0xF1B] = (crate::OpCode::LOAD_IMM as u8) << 1;
+            memory.data[0xF1A] = 0b01010000; // r5 (fb address)
+            memory.data[0xF19] = 0b00010000; // |
+            memory.data[0xF18] = 0b00000000; // --> GPU register 0 at 0x4096
 
             // Store new frame buffer pointer into fb register of GPU
-            memory.data[0x3F] = (crate::OpCode::STOR_BYTE as u8) << 1;
-            memory.data[0x3E] = 0b01010000; // store to address in r5
-            memory.data[0x3D] = 0b00000000; // value from r0
-            memory.data[0x3C] = 0b00000000; //
+            memory.data[0xF1F] = (crate::OpCode::STOR_BYTE as u8) << 1;
+            memory.data[0xF1E] = 0b01010000; // store to address in r5
+            memory.data[0xF1D] = 0b00000000; // value from r0
+            memory.data[0xF1C] = 0b00000000; //
 
             // Load GPU pixeldata register address into r6
-            memory.data[0x43] = (crate::OpCode::LOAD_IMM as u8) << 1;
-            memory.data[0x42] = 0b01100000; // r6 (pixeldata address)
-            memory.data[0x41] = 0b00010000; // |
-            memory.data[0x40] = 0b00000001; // --> GPU register 1 at 0x4097
+            memory.data[0xF23] = (crate::OpCode::LOAD_IMM as u8) << 1;
+            memory.data[0xF22] = 0b01100000; // r6 (pixeldata address)
+            memory.data[0xF21] = 0b00010000; // |
+            memory.data[0xF20] = 0b00000001; // --> GPU register 1 at 0x4097
 
 
             // Store pixeldata to GPU pixeldata register
-            memory.data[0x47] = (crate::OpCode::STOR_BYTE as u8) << 1;
-            memory.data[0x46] = 0b01100000; // store to address in r6
-            memory.data[0x45] = 0b10000000; // value from r1
-            memory.data[0x44] = 0b00000000; //
+            memory.data[0xF27] = (crate::OpCode::STOR_BYTE as u8) << 1;
+            memory.data[0xF26] = 0b01100000; // store to address in r6
+            memory.data[0xF25] = 0b10000000; // value from r1
+            memory.data[0xF24] = 0b00000000; //
 
             // Increment frame buffer pointer to then be sent to GPU
-            memory.data[0x4B] = (crate::OpCode::ADD as u8) << 1;
-            memory.data[0x4A] = 0b00000010; // r0 (fb pointer)
-            memory.data[0x49] = 0b00000000;
-            memory.data[0x48] = 0b00000000;
+            memory.data[0xF2B] = (crate::OpCode::ADD as u8) << 1;
+            memory.data[0xF2A] = 0b00000010; // r0 (fb pointer)
+            memory.data[0xF29] = 0b00000000;
+            memory.data[0xF28] = 0b00000000;
 
             // Store new frame buffer pointer into fb register of GPU
-            memory.data[0x4F] = (crate::OpCode::STOR_BYTE as u8) << 1;
-            memory.data[0x4E] = 0b01010000; // store to address in r5
-            memory.data[0x4D] = 0b00000000; // value from r0
-            memory.data[0x4C] = 0b00000000; //
+            memory.data[0xF2F] = (crate::OpCode::STOR_BYTE as u8) << 1;
+            memory.data[0xF2E] = 0b01010000; // store to address in r5
+            memory.data[0xF2D] = 0b00000000; // value from r0
+            memory.data[0xF2C] = 0b00000000; //
 
             // Repeat from address 0x48
-            memory.data[0x53] = (crate::OpCode::JUMP_REL as u8) << 1;
-            memory.data[0x52] = 0b00000000;
-            memory.data[0x51] = 0b00000000;
-            memory.data[0x50] = 0b00001100;
+            memory.data[0xF33] = (crate::OpCode::JUMP_REL as u8) << 1;
+            memory.data[0xF32] = 0b00000000;
+            memory.data[0xF31] = 0b00000000;
+            memory.data[0xF30] = 0b00001100;
         }
 
         let bus = std::sync::Arc::new(std::sync::RwLock::new(bus.clone()));
