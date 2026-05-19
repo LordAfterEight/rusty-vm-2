@@ -67,10 +67,10 @@ impl Logging {
         for msg in self.msg_queue.iter() {
             print!("\x1b[38;2;200;150;255mLOG: ");
             match msg {
-                Message::Info(s) => print!("\x1b[38;2;100;150;255m"),
-                Message::Debug(s) => print!("\x1b[38;2;255;200;50m"),
-                Message::Warn(s) => print!("\x1b[38;2;255;100;50m"),
-                Message::Error(s) => print!("\x1b[38;2;255;50;50m")
+                Message::Info(_) => print!("\x1b[38;2;100;150;255m"),
+                Message::Debug(_) => print!("\x1b[38;2;255;200;50m"),
+                Message::Warn(_) => print!("\x1b[38;2;255;100;50m"),
+                Message::Error(_) => print!("\x1b[38;2;255;50;50m")
             }
             print!("{}", msg);
             print!("\x1b[0m\n");
