@@ -1,4 +1,5 @@
 use derive_more::Display;
+use std::io::Write;
 
 #[derive(PartialEq, Display)]
 pub enum Message {
@@ -29,6 +30,9 @@ impl Message {
     }
     pub fn error(msg: &str) -> Message {
         Message::Error(msg.into())
+    }
+    pub fn inner(&self) -> String {
+        self.clone().to_string()
     }
 }
 
@@ -75,5 +79,16 @@ impl Logging {
             print!("{}", msg);
             print!("\x1b[0m\n");
         }
+    }
+
+    pub fn to_file(&self) -> Result<(), std::io::Error> {
+        let mut file = std::fs::File::create("log.txt")?;
+        let mut buf = vec![0u8; 65536];
+
+        for msg in self.msg_queue.iter().as_ref() {
+            buf.append(&mut format!("{}\n", msg.inner()).as_bytes().to_vec())
+        }
+        _ = file.write_all(&buf);
+        Ok(())
     }
 }

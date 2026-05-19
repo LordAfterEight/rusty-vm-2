@@ -11,5 +11,6 @@ fn main() -> Result<logging::Message, vmerror::VmError> {
     logging.error("Testing ERROR message");
 
     logging.process();
+    _ = logging.to_file();
     Ok(logging::Message::info("Done"))
 }
