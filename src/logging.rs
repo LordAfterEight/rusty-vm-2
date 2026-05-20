@@ -1,5 +1,6 @@
 use derive_more::Display;
 use std::io::Write;
+use std::sync::{LazyLock, Mutex};
 
 #[derive(PartialEq, Display)]
 pub enum Message {
@@ -32,7 +33,7 @@ impl Message {
         Message::Error(msg.into())
     }
     pub fn inner(&self) -> String {
-        self.clone().to_string()
+        self.to_string()
     }
 }
 
@@ -77,7 +78,7 @@ impl Logging {
                 Message::Error(_) => print!("\x1b[38;2;255;50;50m")
             }
             print!("{}", msg);
-            print!("\x1b[0m\n");
+            print!("\x1b[0m");
         }
     }
 
@@ -92,3 +93,12 @@ impl Logging {
         Ok(())
     }
 }
+
+pub static LOGGER: LazyLock<Mutex<Logging>> = LazyLock::new(|| Mutex::new(Logging::init()));
+
+pub fn info(msg: &str)  { LOGGER.lock().unwrap().info(msg) }
+pub fn debug(msg: &str) { LOGGER.lock().unwrap().debug(msg) }
+pub fn warn(msg: &str)  { LOGGER.lock().unwrap().warn(msg) }
+pub fn error(msg: &str) { LOGGER.lock().unwrap().error(msg) }
+pub fn process()        { LOGGER.lock().unwrap().process() }
+pub fn to_file()        { LOGGER.lock().unwrap().to_file().unwrap() }

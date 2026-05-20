@@ -3,3 +3,13 @@ pub enum VmError {
     ValueTooBig,
     External(String),
 }
+
+impl std::fmt::Display for VmError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        _ = write!(f, "\x1b[38;2;255;50;50mError: \x1b[38;2;50;255;200m");
+        match self {
+            VmError::ValueTooBig => write!(f, "Value too big"),
+            VmError::External(s) => write!(f, "External: {}", s)
+        }
+    }
+}
