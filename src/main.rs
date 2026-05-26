@@ -1,15 +1,15 @@
-mod register;
-mod logging;
-mod vmerror;
+mod core;
+mod devices;
 
-fn main() -> Result<(), vmerror::VmError> {
-    let mut register = register::Register::<u8>::create("GPR");
+fn main() -> Result<(), core::vmerror::VmError> {
+    let mut bus = core::bus::Bus::new();
+    let mut logging = core::logging::Logging::init();
 
-    match register.load(250) {
-        Ok(()) => logging::info(&format!("Successfully loaded value into {}\n", register.name)),
-        Err(e) => logging::info(&format!("{} in line {}\n", e, line!() - 2))
-    }
+    let port = devices::serial::SerialPort::new();
+    bus.map_device(0xFF00, 0xFF01, Box::new(port));
 
-    logging::process();
+    bus.write(0xFF00, b'H');
+    
+    core::logging::process();
     Ok(())
 }
