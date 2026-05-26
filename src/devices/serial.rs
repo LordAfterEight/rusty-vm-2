@@ -15,6 +15,6 @@ impl crate::core::bus::Device for SerialPort {
 
     fn write(&mut self, _addr: u64, value: u8) {
         self.data = value;
-        crate::core::logging::info(&format!("Serial port received data: {} | 0x{:02X} | '{}'\n", value, value, value as char));
+        crate::core::logging::info(&format!("Serial port received data: {:>03} | 0x{:02X} | '{}'\n", value, value, value as char));
     }
 }

@@ -8,8 +8,11 @@ fn main() -> Result<(), core::vmerror::VmError> {
     let port = devices::serial::SerialPort::new();
     bus.map_device(0xFF00, 0xFF01, Box::new(port));
 
-    bus.write(0xFF00, b'H');
-    
+    let text = "Hello, World!";
+    for byte in text.bytes() {
+        bus.write(0xFF00, byte);
+    }
+
     core::logging::process();
     Ok(())
 }
