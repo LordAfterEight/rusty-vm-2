@@ -1,7 +1,7 @@
 #[derive(Debug)]
 pub enum VmError {
     ValueTooBig,
-    FetchError(String)
+    FetchError(String),
     External(String),
 }
 
