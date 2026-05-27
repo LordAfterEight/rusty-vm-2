@@ -1,12 +1,12 @@
 pub struct Bus {
-    memory: Box<std::sync::Arc<std::sync::Mutex<[u8; 0x10000]>>>,
+    memory: std::sync::Arc<std::sync::RwLock<Vec<u8>>>,
     devices: Vec<MemoryRegion>
 }
 
 impl Bus {
     pub fn new() -> Self {
         Self {
-            memory: Box::new(std::sync::Arc::new(std::sync::Mutex::new([0; 0x10000]))),
+            memory: std::sync::Arc::new(std::sync::RwLock::new(vec![0; 0x10000])),
             devices: Vec::new(),
         }
     }
@@ -17,7 +17,7 @@ impl Bus {
                 return region.device.read(addr);
             }
         }
-        self.memory.lock().unwrap()[addr as usize]
+        self.memory.read().unwrap()[addr as usize]
     }
     
     pub fn write(&mut self, addr: u64, value: u8) {
@@ -27,7 +27,7 @@ impl Bus {
                 return;
             }
         }
-        self.memory.lock().unwrap()[addr as usize] = value;
+        self.memory.write().unwrap()[addr as usize] = value;
     }
 
     pub fn map_device(&mut self, start: u64, end: u64, device: Box<dyn Device>) {

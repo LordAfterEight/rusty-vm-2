@@ -1,9 +1,9 @@
 mod core;
 mod devices;
 
-fn main() -> Result<(), core::vmerror::VmError> {
-    let mut bus = core::bus::Bus::new();
-    let mut logging = core::logging::Logging::init();
+fn main() -> Result<(), core::runtime::error::VmRuntimeError> {
+    let mut bus = core::runtime::bus::Bus::new();
+    let mut logging = core::runtime::logging::Logging::init();
 
     let port = devices::serial::SerialPort::new();
     bus.map_device(0xFF00, 0xFF01, Box::new(port));
@@ -13,6 +13,6 @@ fn main() -> Result<(), core::vmerror::VmError> {
         bus.write(0xFF00, byte);
     }
 
-    core::logging::process();
+    core::runtime::logging::process();
     Ok(())
 }

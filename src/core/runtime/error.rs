@@ -13,3 +13,7 @@ impl std::fmt::Display for VmError {
         }
     }
 }
+
+#[derive(Debug)]
+pub enum VmRuntimeError {
+}

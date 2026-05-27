@@ -35,9 +35,9 @@ where
     pub fn load(
         &mut self,
         val: impl TryInto<T, Error = std::num::TryFromIntError> + std::fmt::Display,
-    ) -> Result<(), crate::core::vmerror::VmError> {
+    ) -> Result<(), crate::core::error::VmError> {
         self.value = val.try_into().map_err(|e: std::num::TryFromIntError| {
-            crate::core::vmerror::VmError::External(e.to_string())
+            crate::core::error::VmError::External(e.to_string())
         })?;
         Ok(())
     }
