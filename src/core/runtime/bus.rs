@@ -1,3 +1,4 @@
+#[derive(Debug)]
 pub struct Bus {
     memory: std::sync::Arc<std::sync::RwLock<Vec<u8>>>,
     devices: Vec<MemoryRegion>
@@ -6,7 +7,7 @@ pub struct Bus {
 impl Bus {
     pub fn new() -> Self {
         Self {
-            memory: std::sync::Arc::new(std::sync::RwLock::new(vec![0; 0x10000])),
+            memory: std::sync::Arc::new(std::sync::RwLock::new(vec![0; 0x1_0000_0000])),
             devices: Vec::new(),
         }
     }
@@ -35,6 +36,7 @@ impl Bus {
     }
 }
 
+#[derive(Debug)]
 pub struct MemoryRegion {
     start: u64,
     end: u64,
@@ -44,4 +46,10 @@ pub struct MemoryRegion {
 pub trait Device {
     fn read(&self, addr: u64) -> u8;
     fn write(&mut self, addr: u64, value: u8);
+}
+
+impl std::fmt::Debug for dyn Device {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        Ok(())
+    }
 }

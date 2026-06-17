@@ -18,4 +18,11 @@ impl std::fmt::Display for VmError {
 
 #[derive(Debug)]
 pub enum VmRuntimeError {
+    VmError(VmError),
+}
+
+impl From<VmError> for VmRuntimeError {
+    fn from(value: VmError) -> Self {
+        Self::VmError(value)
+    }
 }
