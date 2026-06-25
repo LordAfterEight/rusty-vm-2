@@ -7,7 +7,7 @@ pub struct Bus {
 impl Bus {
     pub fn new() -> Self {
         Self {
-            memory: std::sync::Arc::new(std::sync::RwLock::new(vec![0; 0x1_0000_0000])),
+            memory: std::sync::Arc::new(std::sync::RwLock::new(vec![0; 1024 * 1024 * 1024 * 4 / (1024*1024)*4])),
             devices: Vec::new(),
         }
     }
@@ -20,9 +20,9 @@ impl Bus {
         }
         self.memory.read().unwrap()[addr as usize]
     }
-    
-    pub fn write(&mut self, addr: u64, value: u8) {
-        for region in &mut self.devices {
+
+    pub fn write(&self, addr: u64, value: u8) {
+        for region in &self.devices {
             if addr >= region.start && addr <= region.end {
                 region.device.write(addr, value);
                 return;
@@ -45,7 +45,7 @@ pub struct MemoryRegion {
 
 pub trait Device {
     fn read(&self, addr: u64) -> u8;
-    fn write(&mut self, addr: u64, value: u8);
+    fn write(&self, addr: u64, value: u8); // &mut self → &self
 }
 
 impl std::fmt::Debug for dyn Device {

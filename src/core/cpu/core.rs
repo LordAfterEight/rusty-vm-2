@@ -3,19 +3,19 @@
 /// ## Flags
 /// CPU flags are stored in a single 8-bit unsigned integer:
 /// Zero | Carr | Halt | ---- | ---- | ---- | ----| ----
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Debug)]
 pub struct Core<'a> {
     pub name: &'a str,
-    pub bus: &'a crate::core::runtime::bus::Bus,
+    pub bus: std::sync::Arc<crate::core::runtime::bus::Bus>,
     pub registers: [crate::core::cpu::register::Register<'a, u32>; 32],
     pub flags: u8,
 }
 
 impl<'a> Core<'a> {
-    pub fn new(name: &'a str, bus: &'a crate::core::runtime::bus::Bus) -> Self {
+    pub fn new(name: &'a str, bus: std::sync::Arc<crate::core::runtime::bus::Bus>) -> Self {
         let mut core = Self {
             name: name,
-            bus,
+            bus, 
             registers: [crate::core::cpu::register::Register::<'a, u32>::create("GPR"); 32],
             flags: 0b0000_0000,
         };

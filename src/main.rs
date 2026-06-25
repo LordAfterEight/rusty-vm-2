@@ -2,11 +2,15 @@ mod core;
 mod devices;
 
 fn main() -> Result<(), core::runtime::error::VmRuntimeError> {
-    let mut bus = core::runtime::bus::Bus::new();
+    let bus = std::sync::Arc::new(core::runtime::bus::Bus::new());
+    let mut cpu = core::cpu::CPU::new(bus.clone());
+    bus.write(0, 255);
     let mut logging = core::runtime::logging::Logging::init();
-    let mut core = core::cpu::core::Core::new("Core", &bus);
-    core.registers[0].load(0xFFFFFFFF1u64)?;
 
-    core::runtime::logging::process();
+    println!("{:?}", cpu);
+
+    loop {
+        core::runtime::logging::process();
+    }
     Ok(())
 }
