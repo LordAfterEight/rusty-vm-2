@@ -9,11 +9,11 @@ impl SerialPort {
 }
 
 impl crate::core::runtime::bus::Device for SerialPort {
-    fn read(&self, _addr: u64) -> u8 {
+    fn read8(&self, _addr: u64) -> u8 {
         self.data.get()
     }
 
-    fn write(&self, _addr: u64, value: u8) {
+    fn write8(&self, _addr: u64, value: u8) {
         self.data.set(value);
         crate::core::runtime::logging::info(&format!("Serial port received data: {:>03} | 0x{:02X} | '{}'\n", value, value, value as char));
     }

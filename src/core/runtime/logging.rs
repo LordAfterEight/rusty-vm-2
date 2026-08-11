@@ -68,7 +68,7 @@ impl Logging {
         self.msg_queue.push(Message::error(msg))
     }
 
-    pub fn process(&self) {
+    pub fn process(&mut self) {
         if !self.msg_queue.is_empty() {
             for msg in self.msg_queue.iter() {
                 print!("\x1b[38;2;200;150;255mLOG: ");
@@ -82,6 +82,7 @@ impl Logging {
                 print!("\x1b[0m");
             }
             println!();
+            self.msg_queue.clear();
         }
     }
 

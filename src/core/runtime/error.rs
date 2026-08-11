@@ -19,10 +19,18 @@ impl std::fmt::Display for VmError {
 #[derive(Debug)]
 pub enum VmRuntimeError {
     VmError(VmError),
+    CoreError(crate::core::cpu::core::CoreError),
+    FileLoadError(crate::core::runtime::bus::FileLoadError)
 }
 
 impl From<VmError> for VmRuntimeError {
     fn from(value: VmError) -> Self {
         Self::VmError(value)
+    }
+}
+
+impl From<crate::core::runtime::bus::FileLoadError> for VmRuntimeError {
+    fn from(value: crate::core::runtime::bus::FileLoadError) -> Self {
+        Self::FileLoadError(value)
     }
 }

@@ -10,13 +10,19 @@ pub struct CPU<'a> {
 }
 
 impl<'a> CPU<'a> {
-    pub fn new(bus: std::sync::Arc<crate::core::runtime::bus::Bus>) -> Self {
-        let core0 = core::Core::new("Core 0", bus.clone());
-        let core1 = core::Core::new("Core 1", bus.clone());
-        let core2 = core::Core::new("Core 2", bus.clone());
-        let core3 = core::Core::new("Core 3", bus);
+    pub fn new() -> Self {
+        let core0 = core::Core::new("Core 0");
+        let core1 = core::Core::new("Core 1");
+        let core2 = core::Core::new("Core 2");
+        let core3 = core::Core::new("Core 3");
         Self {
             cores: [core0, core1, core2, core3],
+        }
+    }
+
+    pub fn link_bus(&mut self, bus: std::sync::Arc<crate::core::runtime::bus::Bus>) {
+        for core in &mut self.cores {
+            core.bus = Some(bus.clone())
         }
     }
 }
