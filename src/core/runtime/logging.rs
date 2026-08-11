@@ -78,8 +78,7 @@ impl Logging {
                     Message::Warn(_) => print!("\x1b[38;2;255;100;50m"),
                     Message::Error(_) => print!("\x1b[38;2;255;50;50m")
                 }
-                print!("{}", msg);
-                print!("\x1b[0m");
+                print!("{}\x1b[0m", msg);
             }
             println!();
             self.msg_queue.clear();

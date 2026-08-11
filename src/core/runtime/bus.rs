@@ -1,3 +1,7 @@
+use crate::core::runtime::logging::LOGGER;
+
+const MEMSIZE: usize = 1024 * 1024 * 1024 * 4;
+
 #[derive(Debug)]
 pub struct Bus {
     memory: std::sync::Arc<std::sync::RwLock<Vec<u8>>>,
@@ -7,7 +11,7 @@ pub struct Bus {
 impl Bus {
     pub fn new() -> Self {
         Self {
-            memory: std::sync::Arc::new(std::sync::RwLock::new(vec![0; 1024 * 1024 * 1024 * 4])),
+            memory: std::sync::Arc::new(std::sync::RwLock::new(vec![0; MEMSIZE])),
             devices: Vec::new(),
         }
     }
@@ -15,7 +19,7 @@ impl Bus {
     pub fn read8(&self, addr: u64) -> u8 {
         for region in &self.devices {
             if addr >= region.start && addr <= region.end {
-                return region.device.read8(addr);
+                return region.device.read8(addr - region.start);
             }
         }
         self.memory.read().unwrap()[addr as usize]
@@ -24,7 +28,7 @@ impl Bus {
     pub fn read16(&self, addr: u64) -> u16 {
         for region in &self.devices {
             if addr >= region.start && addr <= region.end {
-                return region.device.read16(addr);
+                return region.device.read16(addr - region.start);
             }
         }
         let memory = self.memory.read().unwrap();
@@ -34,7 +38,7 @@ impl Bus {
     pub fn read32(&self, addr: u64) -> u32 {
         for region in &self.devices {
             if addr >= region.start && addr <= region.end {
-                return region.device.read32(addr);
+                return region.device.read32(addr - region.start);
             }
         }
         let memory = self.memory.read().unwrap();
@@ -49,7 +53,7 @@ impl Bus {
     pub fn write8(&self, addr: u64, value: u8) {
         for region in &self.devices {
             if addr >= region.start && addr <= region.end {
-                region.device.write8(addr, value);
+                region.device.write8(addr - region.start, value);
                 return;
             }
         }
@@ -59,7 +63,7 @@ impl Bus {
     pub fn write16(&self, addr: u64, value: u16) {
         for region in &self.devices {
             if addr >= region.start && addr <= region.end {
-                region.device.write16(addr, value);
+                region.device.write16(addr - region.start, value);
                 return;
             }
         }
@@ -72,7 +76,7 @@ impl Bus {
     pub fn write32(&self, addr: u64, value: u32) {
         for region in &self.devices {
             if addr >= region.start && addr <= region.end {
-                region.device.write32(addr, value);
+                region.device.write32(addr - region.start, value);
                 return;
             }
         }

@@ -75,8 +75,7 @@ pub struct Decoded {
 
 impl std::fmt::Display for Decoded {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Raw value: {}", self.raw);
-        Ok(())
+        write!(f, "Raw value: {}", self.raw)
     }
 }
 

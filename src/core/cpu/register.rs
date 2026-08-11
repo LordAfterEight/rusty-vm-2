@@ -30,14 +30,14 @@ where
     ///
     /// register.insert(200).unwrap(); // <-- This will succeed
     ///
-    /// register.insert(256).unwrap(); // <-- This will fail and panic with a VmError::External(TryFromIntError)
+    /// register.insert(256).unwrap(); // <-- This will fail and panic with a RegisterError::External(TryFromIntError)
     /// ```
     pub fn insert<E>(
         &mut self,
         val: impl TryInto<T, Error = E> + std::fmt::Display,
-    ) -> Result<(), crate::core::runtime::error::VmError> {
+    ) -> Result<(), RegisterError> {
         self.value = val.try_into().map_err(|e: E| {
-            crate::core::runtime::error::VmError::External(std::any::type_name_of_val(&e).to_string())
+            RegisterError::Other(std::any::type_name_of_val(&e).to_string())
         })?;
         Ok(())
     }
@@ -57,11 +57,17 @@ where
     }
 
     /// Increases the Register's internal value by 1
-    pub fn checked_inc(&mut self, inc: T) -> Result<(), crate::core::runtime::error::VmError> {
+    pub fn checked_inc(&mut self, inc: T) -> Result<(), RegisterError> {
         self.value = self
             .value
             .checked_add(&inc)
-            .ok_or(crate::core::runtime::error::VmError::ValueTooBig)?;
+            .ok_or(RegisterError::ValueTooBig)?;
         Ok(())
     }
+}
+
+#[derive(Debug)]
+pub enum RegisterError {
+    ValueTooBig,
+    Other(String)
 }
